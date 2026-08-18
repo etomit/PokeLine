@@ -16,13 +16,19 @@ class ExampleTest extends TestCase
     {
         $response = $this->get('/');
 
-        $response->assertStatus(200)->assertSee('world-hub')->assertSee('hub-character');
+        $response->assertStatus(200)
+            ->assertSee('world-hub')
+            ->assertSee('hub-character')
+            ->assertSee('global-music');
     }
 
     public function test_local_setup_and_arena_views_render(): void
     {
         $this->get('/play/local')->assertOk()->assertSee('items2');
         $this->withSession(['battle' => ['mode' => 'local', 'state' => [], 'pending' => null]])
-            ->get('/battle')->assertOk()->assertSee('local-controls');
+            ->get('/battle')
+            ->assertOk()
+            ->assertSee('local-controls')
+            ->assertSee('music-toggle');
     }
 }

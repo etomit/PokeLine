@@ -33,6 +33,7 @@
         <form action="{{ route('locale') }}" method="post" class="settings-form">
             @csrf
             <label>{{ __('ui.language') }}<select name="locale"><option value="fr" @selected(app()->getLocale() === 'fr')>Français</option><option value="en" @selected(app()->getLocale() === 'en')>English</option></select></label>
+            <label class="sound-setting"><input type="checkbox" id="global-music" checked> {{ __('ui.music') }}</label>
             <label class="sound-setting"><input type="checkbox" id="global-sound" checked> {{ __('ui.sound') }}</label>
             <button class="pixel-button" type="submit">{{ __('ui.save') }}</button>
         </form>

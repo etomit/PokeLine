@@ -78,6 +78,31 @@ class BattleEngineTest extends TestCase
         $this->assertSame(14, $state['players']['p1']['roster'][0]['moves'][0]['current_pp']);
     }
 
+    public function test_a_fainted_pokemon_requires_a_manual_replacement(): void
+    {
+        $engine = new BattleEngine(new TypeChart);
+        $fragile = $this->pokemon('Fragile', 'normal', 'normal', 20);
+        $fragile['stats']['hp'] = 1;
+        $state = $engine->createState(
+            [$fragile, $this->pokemon('Reserve', 'water', 'water', 30)],
+            [$this->pokemon('Attacker', 'normal', 'normal', 300)],
+        );
+
+        $state = $engine->resolveTurn($state, [
+            'p1' => ['move_index' => 0],
+            'p2' => ['move_index' => 0],
+        ]);
+
+        $this->assertTrue($state['forced_switch']['p1']);
+        $this->assertSame(0, $state['players']['p1']['active']);
+
+        $state = $engine->resolveForcedSwitch($state, 'p1', 1);
+
+        $this->assertSame(1, $state['players']['p1']['active']);
+        $this->assertArrayNotHasKey('p1', $state['forced_switch']);
+        $this->assertContains('switch', array_column($state['last_events'], 'type'));
+    }
+
     private function pokemon(string $label, string $type, string $moveType, int $speed): array
     {
         return [

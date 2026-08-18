@@ -3,15 +3,158 @@ import './bootstrap';
 const settingsDialog = document.querySelector('#settings-dialog');
 const settingsButton = document.querySelector('#settings-open');
 const soundSetting = document.querySelector('#global-sound');
+const musicSetting = document.querySelector('#global-music');
 let soundEnabled = localStorage.getItem('pokeline_sound') !== 'off';
+let musicEnabled = localStorage.getItem('pokeline_music') !== 'off';
+
+const pageMusicTheme = document.querySelector('#world-hub')
+    ? 'menu'
+    : document.querySelector('#battle-app') ? 'battle' : null;
+const musicThemes = {
+    menu: {
+        tempo: 116,
+        lead: [72, 76, 79, 76, 74, 77, 81, 77, 72, 76, 79, 83, 81, 79, 76, null, 69, 72, 76, 72, 71, 74, 77, 74, 69, 72, 76, 79, 77, 74, 72, null],
+        harmony: [64, null, 67, null, 65, null, 69, null, 64, null, 67, null, 69, null, 67, null, 60, null, 64, null, 62, null, 65, null, 60, null, 64, null, 65, null, 64, null],
+        bass: [48, null, 48, null, 53, null, 53, null, 48, null, 48, null, 55, null, 55, null, 45, null, 45, null, 50, null, 50, null, 45, null, 45, null, 43, null, 48, null],
+    },
+    battle: {
+        tempo: 158,
+        lead: [76, 76, 79, 81, 83, 81, 79, 76, 74, 74, 77, 79, 81, 79, 77, 74, 76, 79, 84, 83, 81, 79, 77, 79, 81, 84, 88, 86, 84, 83, 81, 79],
+        harmony: [67, null, 71, null, 72, null, 71, null, 65, null, 69, null, 70, null, 69, null, 67, null, 72, null, 69, null, 71, null, 72, null, 76, null, 74, null, 71, null],
+        bass: [40, 40, 40, 43, 45, 45, 43, 40, 38, 38, 38, 41, 43, 43, 41, 38, 40, 40, 43, 45, 47, 47, 45, 43, 45, 45, 48, 47, 45, 43, 40, 40],
+    },
+    victory: {
+        tempo: 132,
+        lead: [72, 76, 79, 84, 79, 84, 88, 91, 88, 84, 79, 76, 84, 88, 91, null],
+        harmony: [64, 67, 72, 76, 72, 76, 79, 84, 79, 76, 72, 67, 76, 79, 84, null],
+        bass: [48, null, 52, null, 55, null, 60, null, 55, null, 52, null, 48, 55, 60, null],
+    },
+    defeat: {
+        tempo: 92,
+        lead: [72, null, 71, null, 67, null, 64, null, 62, null, 60, null, 59, 55, 52, null],
+        harmony: [64, null, 62, null, 59, null, 55, null, 53, null, 52, null, 50, 47, 43, null],
+        bass: [48, null, 47, null, 43, null, 40, null, 38, null, 36, null, 35, null, 31, null],
+    },
+};
+let musicContext = null;
+let musicMaster = null;
+let musicTimer = null;
+let musicStep = 0;
+let activeMusicTheme = null;
+let musicUnlocked = false;
+
+const currentMusicTheme = () => {
+    if (pageMusicTheme !== 'battle') return pageMusicTheme;
+    const result = document.querySelector('#battle-result');
+    if (!result || result.hidden) return 'battle';
+    return result.classList.contains('victory') ? 'victory' : 'defeat';
+};
+
+const noteFrequency = midi => 440 * (2 ** ((midi - 69) / 12));
+const playMusicNote = (context, output, midi, start, duration, waveform, volume) => {
+    if (midi === null || midi === undefined) return;
+    const oscillator = context.createOscillator();
+    const envelope = context.createGain();
+    oscillator.type = waveform;
+    oscillator.frequency.setValueAtTime(noteFrequency(midi), start);
+    envelope.gain.setValueAtTime(0.0001, start);
+    envelope.gain.exponentialRampToValueAtTime(volume, start + 0.018);
+    envelope.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    oscillator.connect(envelope).connect(output);
+    oscillator.start(start);
+    oscillator.stop(start + duration + 0.025);
+};
+
+const stopMusic = () => {
+    const contextToClose = musicContext;
+    const masterToFade = musicMaster;
+    if (musicTimer) window.clearInterval(musicTimer);
+    musicTimer = null;
+    musicContext = null;
+    musicMaster = null;
+    activeMusicTheme = null;
+    musicStep = 0;
+    if (!contextToClose || contextToClose.state === 'closed') return;
+    const now = contextToClose.currentTime;
+    masterToFade?.gain.cancelScheduledValues(now);
+    masterToFade?.gain.setValueAtTime(Math.max(masterToFade.gain.value, 0.0001), now);
+    masterToFade?.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+    window.setTimeout(() => contextToClose.close().catch(() => {}), 150);
+};
+
+const startMusic = async themeName => {
+    if (!musicEnabled || !musicUnlocked || !musicThemes[themeName] || document.hidden) return;
+    if (themeName === 'menu' && document.querySelector('#game-space-dialog')?.open) return;
+    if (activeMusicTheme === themeName && musicContext) {
+        if (musicContext.state === 'suspended') await musicContext.resume().catch(() => {});
+        return;
+    }
+    stopMusic();
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    const context = new AudioContextClass();
+    const master = context.createGain();
+    master.gain.value = 0.48;
+    master.connect(context.destination);
+    musicContext = context;
+    musicMaster = master;
+    activeMusicTheme = themeName;
+    const theme = musicThemes[themeName];
+    const stepDuration = 60 / theme.tempo / 2;
+    const scheduleStep = () => {
+        if (context !== musicContext || master !== musicMaster) return;
+        const start = context.currentTime + 0.025;
+        const index = musicStep % theme.lead.length;
+        playMusicNote(context, master, theme.lead[index], start, stepDuration * 0.82, 'square', 0.055);
+        playMusicNote(context, master, theme.harmony[index], start, stepDuration * 0.72, 'square', 0.018);
+        playMusicNote(context, master, theme.bass[index], start, stepDuration * 0.92, 'triangle', 0.07);
+        musicStep = (musicStep + 1) % theme.lead.length;
+    };
+    await context.resume().catch(() => {});
+    scheduleStep();
+    musicTimer = window.setInterval(scheduleStep, stepDuration * 1000);
+};
+
+const updateMusicPreference = enabled => {
+    musicEnabled = enabled;
+    musicUnlocked = true;
+    localStorage.setItem('pokeline_music', enabled ? 'on' : 'off');
+    if (musicSetting) musicSetting.checked = enabled;
+    if (enabled) startMusic(currentMusicTheme());
+    else stopMusic();
+};
+
+if (pageMusicTheme) {
+    const unlockMusic = () => {
+        musicUnlocked = true;
+        startMusic(currentMusicTheme());
+    };
+    window.addEventListener('pointerdown', unlockMusic, {once: true});
+    window.addEventListener('keydown', unlockMusic, {once: true});
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) stopMusic();
+        else if (musicUnlocked) startMusic(currentMusicTheme());
+    });
+    window.addEventListener('pagehide', stopMusic);
+}
+
+window.addEventListener('storage', event => {
+    if (event.key !== 'pokeline_music') return;
+    musicEnabled = event.newValue !== 'off';
+    if (musicSetting) musicSetting.checked = musicEnabled;
+    if (musicEnabled) startMusic(currentMusicTheme());
+    else stopMusic();
+});
 
 if (settingsDialog && settingsButton) {
     soundSetting.checked = soundEnabled;
+    musicSetting.checked = musicEnabled;
     settingsButton.addEventListener('click', () => settingsDialog.showModal());
     soundSetting.addEventListener('change', () => {
         soundEnabled = soundSetting.checked;
         localStorage.setItem('pokeline_sound', soundEnabled ? 'on' : 'off');
     });
+    musicSetting.addEventListener('change', () => updateMusicPreference(musicSetting.checked));
     window.addEventListener('keydown', event => {
         if (event.key.toLowerCase() !== 'p' || ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
         event.preventDefault();
@@ -55,6 +198,7 @@ if (hub) {
 
     const displayName = key => document.querySelector(`[data-destination="${key}"]`)?.textContent.replace(/^\s*\d+/, '').trim() || key;
     const openGame = key => {
+        stopMusic();
         gameFrame.src = destinations[key].url;
         gameDialog.showModal();
     };
@@ -108,7 +252,12 @@ if (hub) {
     window.addEventListener('blur', () => pressedDirections.splice(0));
     document.querySelectorAll('[data-destination]').forEach(marker => marker.addEventListener('click', () => openGame(marker.dataset.destination)));
     document.querySelector('[data-game-close]').addEventListener('click', () => gameDialog.close());
-    gameDialog.addEventListener('close', () => { gameFrame.src = 'about:blank'; hub.focus(); });
+    gameDialog.addEventListener('close', () => {
+        gameFrame.src = 'about:blank';
+        hub.focus();
+        musicEnabled = localStorage.getItem('pokeline_music') !== 'off';
+        if (musicEnabled) startMusic('menu');
+    });
     window.addEventListener('message', event => { if (event.origin === window.location.origin && event.data === 'pokeline:close-game') gameDialog.close(); });
     hub.addEventListener('click', () => hub.focus());
     update(); walk(); hub.focus();
@@ -357,7 +506,7 @@ document.querySelectorAll('[data-local-team-library]').forEach(library => {
 });
 
 const battleApp = document.querySelector('#battle-app');
-if (battleApp) {
+if (false && battleApp) {
     const config = {kind:battleApp.dataset.kind,mode:battleApp.dataset.mode,stateUrl:battleApp.dataset.stateUrl,actionUrl:battleApp.dataset.actionUrl,text:JSON.parse(battleApp.dataset.translations)};
     const csrf = document.querySelector('meta[name="csrf-token"]').content;
     const els = {playerSprite:document.querySelector('#player-sprite'),opponentSprite:document.querySelector('#opponent-sprite'),playerHud:document.querySelector('#player-hud'),opponentHud:document.querySelector('#opponent-hud'),moves:document.querySelector('#moves'),localP1:document.querySelector('#local-moves-p1'),localP2:document.querySelector('#local-moves-p2'),message:document.querySelector('#battle-message'),log:document.querySelector('#battle-log'),turn:document.querySelector('#turn-label'),weather:document.querySelector('#weather-label'),sound:document.querySelector('#sound-toggle')};
@@ -380,4 +529,316 @@ if (battleApp) {
     const act=async action=>{if(busy)return;busy=true;document.querySelectorAll('.moves-grid button,.switch-strip button').forEach(button=>button.disabled=true);try{const next=await request(config.actionUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(action)});busy=false;render(next,true)}catch(error){els.message.textContent=error.message}finally{busy=false}};
     const refresh=async()=>{try{const next=await request(config.stateUrl),version=normalized(next).version,shouldAnimate=renderedVersion!==null&&version!==renderedVersion;render(next,shouldAnimate);renderedVersion=version}catch(error){els.message.textContent=error.message}};
     els.sound.addEventListener('click',()=>{soundEnabled=!soundEnabled;localStorage.setItem('pokeline_sound',soundEnabled?'on':'off');if(soundSetting)soundSetting.checked=soundEnabled;els.sound.textContent=`${soundEnabled?'🔊':'🔇'} ${config.text.sound}`});els.sound.textContent=`${soundEnabled?'🔊':'🔇'} ${config.text.sound}`;refresh();if(config.kind==='online')setInterval(refresh,1400);
+}
+
+if (battleApp) {
+    const config = {
+        kind: battleApp.dataset.kind,
+        mode: battleApp.dataset.mode,
+        stateUrl: battleApp.dataset.stateUrl,
+        actionUrl: battleApp.dataset.actionUrl,
+        text: JSON.parse(battleApp.dataset.translations),
+    };
+    const csrf = document.querySelector('meta[name="csrf-token"]').content;
+    const els = {
+        playerSprite: document.querySelector('#player-sprite'),
+        opponentSprite: document.querySelector('#opponent-sprite'),
+        playerHud: document.querySelector('#player-hud'),
+        opponentHud: document.querySelector('#opponent-hud'),
+        moves: document.querySelector('#moves'),
+        localP1: document.querySelector('#local-moves-p1'),
+        localP2: document.querySelector('#local-moves-p2'),
+        message: document.querySelector('#battle-message'),
+        log: document.querySelector('#battle-log'),
+        turn: document.querySelector('#turn-label'),
+        weather: document.querySelector('#weather-label'),
+        music: document.querySelector('#music-toggle'),
+        sound: document.querySelector('#sound-toggle'),
+        result: document.querySelector('#battle-result'),
+    };
+    let currentPayload = null;
+    let busy = false;
+    let animating = false;
+    let refreshing = false;
+    let renderedVersion = null;
+
+    const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+    const request = async (url, options = {}) => {
+        const {headers = {}, ...requestOptions} = options;
+        const response = await fetch(url, {
+            ...requestOptions,
+            headers: {Accept: 'application/json', 'X-CSRF-TOKEN': csrf, ...headers},
+        });
+        if (!response.ok) throw new Error((await response.json().catch(() => ({}))).message || `HTTP ${response.status}`);
+        return response.json();
+    };
+    const normalized = raw => config.kind === 'session'
+        ? {state: raw.state, mode: raw.mode, pending: raw.pending, you: 'p1', version: raw.state?.turn}
+        : raw;
+    const active = (state, key) => state.players[key].roster[state.players[key].active];
+    const other = key => key === 'p1' ? 'p2' : 'p1';
+    const hpPercent = (current, maximum) => Math.max(0, Math.min(100, Math.round(current / Math.max(1, maximum) * 100)));
+    const escape = value => String(value ?? '').replace(/[&<>'"]/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[character]));
+    const typeLabel = type => config.text.types?.[type] || type;
+    const hud = (pokemon, displayedHp = pokemon.current_hp) => {
+        const percent = hpPercent(displayedHp, pokemon.max_hp);
+        const status = pokemon.status ? `<b class="status-badge status-${escape(pokemon.status)}">${escape(pokemon.status)}</b>` : '';
+        return `<div class="hud-name"><span>${escape(pokemon.label)} ${status}</span><span>Lv.100</span></div><div class="type-tags">${pokemon.types.map(type => `<span class="type-${escape(type)}">${escape(typeLabel(type))}</span>`).join('')}${pokemon.ability ? `<span>${escape(pokemon.ability)}</span>` : ''}</div><div class="hp-line"><b>${escape(config.text.hp)}</b><div class="hp-track"><div class="hp-fill ${percent < 25 ? 'low' : ''}" style="width:${percent}%"></div></div></div><div class="hp-numbers">${displayedHp} / ${pokemon.max_hp}</div>`;
+    };
+    const moveMarkup = (pokemon, disabled) => pokemon.moves.map((move, index) => `<button class="move-button type-${escape(move.type)}" data-move="${index}" ${(disabled || (move.current_pp ?? move.pp ?? 1) <= 0) ? 'disabled' : ''}><span>${escape(move.label)}</span><small>${escape(typeLabel(move.type))} · ${move.power || '—'} PUI · ${move.current_pp ?? move.pp ?? '?'} PP</small></button>`).join('');
+    const switchMarkup = (state, key, disabled, forced = false) => `<div class="switch-strip ${forced ? 'forced-switch' : ''}"><strong>${escape(forced ? config.text.chooseReplacement : config.text.switch)}</strong>${state.players[key].roster.map((pokemon, index) => `<button type="button" data-switch="${index}" ${(disabled || index === state.players[key].active || pokemon.current_hp <= 0) ? 'disabled' : ''} title="${escape(pokemon.label)}"><img src="${escape(pokemon.sprites.front)}" alt=""><span>${escape(pokemon.label)}<small>${pokemon.current_hp}/${pokemon.max_hp}</small></span></button>`).join('')}</div>`;
+    const controlsMarkup = (state, key, disabled, forced = false) => forced
+        ? switchMarkup(state, key, disabled, true)
+        : moveMarkup(active(state, key), disabled) + switchMarkup(state, key, disabled);
+    const bindActions = container => {
+        container.querySelectorAll('[data-move]').forEach(button => button.addEventListener('click', () => act({action_type: 'move', move_index: Number(button.dataset.move)})));
+        container.querySelectorAll('[data-switch]').forEach(button => button.addEventListener('click', () => act({action_type: 'switch', pokemon_index: Number(button.dataset.switch)})));
+    };
+    const spriteFor = (state, key, you) => {
+        const pokemon = active(state, key);
+        return key === you ? (pokemon.sprites.back || pokemon.sprites.front) : pokemon.sprites.front;
+    };
+    const hudFor = (key, you) => key === you ? els.playerHud : els.opponentHud;
+    const spriteElementFor = (key, you) => key === you ? els.playerSprite : els.opponentSprite;
+    const setCombatant = (state, key, you) => {
+        const pokemon = active(state, key);
+        const sprite = spriteElementFor(key, you);
+        sprite.src = spriteFor(state, key, you);
+        sprite.alt = pokemon.label;
+        sprite.classList.remove('faint-out', 'switch-in', 'is-fainted');
+        if (pokemon.current_hp <= 0) sprite.classList.add('is-fainted');
+        hudFor(key, you).innerHTML = hud(pokemon);
+    };
+    const resultScreen = (state, you, reward = []) => {
+        if (state.phase !== 'finished') {
+            els.result.hidden = true;
+            return;
+        }
+        const victory = state.winner === you;
+        startMusic(victory ? 'victory' : 'defeat');
+        els.result.classList.toggle('victory', victory);
+        els.result.classList.toggle('defeat', !victory);
+        els.result.querySelector('[data-result-title]').textContent = victory ? config.text.victory : config.text.defeat;
+        els.result.querySelector('[data-result-message]').textContent = victory ? config.text.victoryMessage : config.text.defeatMessage;
+        const rewards = els.result.querySelector('[data-result-rewards]');
+        rewards.hidden = !reward?.length;
+        rewards.textContent = reward?.length ? `${config.text.rewards}: ${reward.join(', ')}` : '';
+        els.result.hidden = false;
+    };
+    const showMessage = text => {
+        els.message.textContent = text;
+        els.message.classList.remove('message-reveal');
+        void els.message.offsetWidth;
+        els.message.classList.add('message-reveal');
+    };
+    const draw = (data, {disabled = false, preserveMessage = false, showResult = true} = {}) => {
+        if (!data?.state) return;
+        const state = data.state;
+        const you = data.you || 'p1';
+        const enemy = other(you);
+        const forced = state.forced_switch || {};
+        const forcedKeys = Object.keys(forced).filter(key => forced[key]);
+        setCombatant(state, you, you);
+        setCombatant(state, enemy, you);
+        els.turn.textContent = `${config.text.turn} ${state.turn}`;
+        els.weather.textContent = state.weather ? `${config.text.weather}: ${state.weather.toUpperCase()} (${state.weather_turns})` : '';
+        els.log.innerHTML = state.log.slice().reverse().map(line => `<div>› ${escape(line)}</div>`).join('');
+
+        const submitted = Boolean(data.submitted);
+        const ownForced = Boolean(forced[you]);
+        const opponentForced = forcedKeys.length > 0 && !ownForced;
+        const controlsDisabled = disabled || busy || animating || submitted || opponentForced || state.phase !== 'active';
+        els.moves.innerHTML = controlsMarkup(state, you, controlsDisabled, ownForced);
+        bindActions(els.moves);
+
+        if ((data.mode || config.mode) === 'local') {
+            battleApp.classList.add('local-mode');
+            const firstForced = forcedKeys[0] || null;
+            const p1Disabled = disabled || busy || animating || state.phase !== 'active' || (firstForced ? firstForced !== 'p1' : data.pending !== null);
+            const p2Disabled = disabled || busy || animating || state.phase !== 'active' || (firstForced ? firstForced !== 'p2' : data.pending === null);
+            els.localP1.innerHTML = controlsMarkup(state, 'p1', p1Disabled, firstForced === 'p1');
+            els.localP2.innerHTML = controlsMarkup(state, 'p2', p2Disabled, firstForced === 'p2');
+            bindActions(els.localP1);
+            bindActions(els.localP2);
+        }
+
+        if (!preserveMessage) {
+            showMessage(state.phase === 'finished'
+                ? (state.winner === you ? config.text.victory : config.text.defeat)
+                : ownForced
+                    ? config.text.chooseReplacement
+                    : opponentForced
+                        ? config.text.waitingReplacement
+                        : submitted
+                            ? config.text.waiting
+                            : config.text.choose);
+        }
+        if (showResult) resultScreen(state, you, data.reward);
+    };
+    const animateHp = async (key, you, currentHp, maximumHp) => {
+        const targetHud = hudFor(key, you);
+        const fill = targetHud.querySelector('.hp-fill');
+        const numbers = targetHud.querySelector('.hp-numbers');
+        if (!fill || !numbers) return;
+        const percent = hpPercent(currentHp, maximumHp);
+        fill.classList.toggle('low', percent < 25);
+        fill.style.width = `${percent}%`;
+        numbers.textContent = `${currentHp} / ${maximumHp}`;
+        await wait(760);
+    };
+    const playSound = (name, impact = false) => {
+        if (!soundEnabled) return;
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const context = new AudioContext();
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.type = impact ? 'square' : 'sawtooth';
+        const seed = [...name].reduce((sum, character) => sum + character.charCodeAt(0), 0);
+        oscillator.frequency.setValueAtTime(impact ? 95 : 160 + seed % 220, context.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(impact ? 55 : 80, context.currentTime + .16);
+        gain.gain.setValueAtTime(.07, context.currentTime);
+        gain.gain.exponentialRampToValueAtTime(.001, context.currentTime + .18);
+        oscillator.connect(gain).connect(context.destination);
+        oscillator.start();
+        oscillator.stop(context.currentTime + .19);
+        oscillator.addEventListener('ended', () => context.close());
+    };
+    const playSequence = async (events, previousState, finalState, you) => {
+        const visualHp = {
+            p1: active(previousState, 'p1').current_hp,
+            p2: active(previousState, 'p2').current_hp,
+        };
+        const maximumHp = {
+            p1: active(previousState, 'p1').max_hp,
+            p2: active(previousState, 'p2').max_hp,
+        };
+
+        for (const event of events) {
+            showMessage(event.text || '');
+            if (event.type === 'attack') {
+                await wait(420);
+                const attacker = spriteElementFor(event.actor, you);
+                attacker.classList.remove('lunge-right', 'lunge-left');
+                void attacker.offsetWidth;
+                attacker.classList.add(event.actor === you ? 'lunge-right' : 'lunge-left');
+                playSound(event.move);
+                await wait(520);
+                continue;
+            }
+            if (['damage', 'recoil', 'status-damage', 'weather-damage'].includes(event.type)) {
+                const target = spriteElementFor(event.target, you);
+                target.classList.remove('hit-shake');
+                void target.offsetWidth;
+                target.classList.add('hit-shake');
+                playSound('impact', true);
+                await wait(180);
+                visualHp[event.target] = Math.max(0, visualHp[event.target] - Number(event.amount || 0));
+                await animateHp(event.target, you, visualHp[event.target], maximumHp[event.target]);
+                continue;
+            }
+            if (event.type === 'heal') {
+                visualHp[event.target] = Math.min(maximumHp[event.target], visualHp[event.target] + Number(event.amount || 0));
+                await animateHp(event.target, you, visualHp[event.target], maximumHp[event.target]);
+                continue;
+            }
+            if (event.type === 'faint') {
+                const target = spriteElementFor(event.target, you);
+                await wait(420);
+                target.classList.add('faint-out');
+                playSound('faint', true);
+                await wait(720);
+                continue;
+            }
+            if (event.type === 'switch') {
+                await wait(350);
+                const target = spriteElementFor(event.target, you);
+                const pokemon = active(finalState, event.target);
+                target.src = spriteFor(finalState, event.target, you);
+                target.alt = pokemon.label;
+                target.classList.remove('faint-out', 'is-fainted');
+                target.classList.add('switch-in');
+                hudFor(event.target, you).innerHTML = hud(pokemon);
+                visualHp[event.target] = pokemon.current_hp;
+                maximumHp[event.target] = pokemon.max_hp;
+                await wait(780);
+                continue;
+            }
+            await wait(520);
+        }
+    };
+    const render = async (raw, animate = false) => {
+        const next = normalized(raw);
+        if (!next.state) return;
+        document.querySelector('.waiting-card')?.remove();
+        battleApp.classList.remove('is-waiting');
+        const previous = currentPayload;
+        currentPayload = next;
+        els.result.hidden = true;
+
+        if (animate && previous?.state && next.state.last_events?.length) {
+            animating = true;
+            draw(previous, {disabled: true, preserveMessage: true, showResult: false});
+            await playSequence(next.state.last_events, previous.state, next.state, next.you || 'p1');
+            animating = false;
+            draw(next, {showResult: false});
+            if (next.state.phase === 'finished') {
+                await wait(450);
+                resultScreen(next.state, next.you || 'p1', next.reward);
+            }
+        } else {
+            draw(next);
+        }
+    };
+    const act = async action => {
+        if (busy || animating) return;
+        busy = true;
+        document.querySelectorAll('.moves-grid button,.switch-strip button').forEach(button => { button.disabled = true; });
+        try {
+            const next = await request(config.actionUrl, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(action),
+            });
+            const nextNormalized = normalized(next);
+            const shouldAnimate = action.action_type === 'switch' || renderedVersion === null || nextNormalized.version !== renderedVersion || config.mode === 'local';
+            busy = false;
+            await render(next, shouldAnimate);
+            renderedVersion = nextNormalized.version;
+        } catch (error) {
+            busy = false;
+            els.message.textContent = error.message;
+            if (currentPayload) draw(currentPayload, {preserveMessage: true});
+        }
+    };
+    const refresh = async () => {
+        if (busy || animating || refreshing) return;
+        refreshing = true;
+        try {
+            const next = await request(config.stateUrl);
+            const version = normalized(next).version;
+            const shouldAnimate = renderedVersion !== null && version !== renderedVersion;
+            await render(next, shouldAnimate);
+            renderedVersion = version;
+        } catch (error) {
+            els.message.textContent = error.message;
+        } finally {
+            refreshing = false;
+        }
+    };
+
+    els.sound.addEventListener('click', () => {
+        soundEnabled = !soundEnabled;
+        localStorage.setItem('pokeline_sound', soundEnabled ? 'on' : 'off');
+        if (soundSetting) soundSetting.checked = soundEnabled;
+        els.sound.textContent = `${soundEnabled ? '🔊' : '🔇'} ${config.text.sound}`;
+    });
+    els.music.addEventListener('click', () => {
+        updateMusicPreference(!musicEnabled);
+        els.music.textContent = `${musicEnabled ? '🎵' : '🚫'} ${config.text.music}`;
+    });
+    els.sound.textContent = `${soundEnabled ? '🔊' : '🔇'} ${config.text.sound}`;
+    els.music.textContent = `${musicEnabled ? '🎵' : '🚫'} ${config.text.music}`;
+    refresh();
+    if (config.kind === 'online') setInterval(refresh, 1400);
 }

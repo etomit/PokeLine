@@ -37,6 +37,7 @@ return [
     'battle' => 'Battle',
     'turn' => 'Turn',
     'sound' => 'Sound',
+    'music' => 'Music',
     'enabled' => 'on',
     'disabled' => 'off',
     'choose_attack' => 'Choose a move',
@@ -129,4 +130,9 @@ return [
     'local_team_name_placeholder' => 'Team name',
     'save_player_team' => 'Save P:player',
     'load' => 'Load',
+    'choose_replacement' => 'Choose a Pokémon to continue.',
+    'waiting_replacement' => 'Your opponent is choosing their next Pokémon…',
+    'return_to_menu' => 'Return to menu',
+    'victory_message' => 'Your team wins the battle!',
+    'defeat_message' => 'Your team can no longer battle.',
 ];

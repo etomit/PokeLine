@@ -23,13 +23,14 @@ class PokeApiService
 
         $locale = app()->getLocale();
 
-        return Cache::remember("pokeapi:pokemon:{$identifier}:{$locale}:v5", now()->addDays(14), function () use ($identifier, $locale) {
+        return Cache::remember("pokeapi:pokemon:{$identifier}:{$locale}:v6", now()->addDays(14), function () use ($identifier, $locale) {
             $response = Http::acceptJson()->timeout(15)->retry(2, 250)->get("{$this->baseUrl}/pokemon/{$identifier}");
             if ($response->failed()) {
                 throw new RuntimeException(__('ui.pokemon_not_found'));
             }
 
             $pokemon = $response->json();
+            $speciesLabel = $this->localizedPokemonName((int) $pokemon['id'], $pokemon['name'], $locale);
             $moveRefs = $this->selectMoveRefs($pokemon['moves'] ?? []);
             $responses = Http::pool(fn (Pool $pool) => array_map(
                 fn (array $move) => $pool->as($move['name'])->acceptJson()->timeout(12)->get($move['url']),
@@ -93,7 +94,7 @@ class PokeApiService
             return [
                 'id' => (int) $pokemon['id'],
                 'name' => $pokemon['name'],
-                'label' => ucfirst(str_replace('-', ' ', $pokemon['name'])),
+                'label' => $speciesLabel ?? ucfirst(str_replace('-', ' ', $pokemon['name'])),
                 'level' => 100,
                 'types' => collect($pokemon['types'])->sortBy('slot')->pluck('type.name')->values()->all(),
                 'stats' => $stats,
@@ -106,6 +107,37 @@ class PokeApiService
                 ],
             ];
         });
+    }
+
+    public function localizeSnapshot(array $snapshot): array
+    {
+        if (app()->getLocale() === 'en') {
+            return $snapshot;
+        }
+        $snapshot['label'] = $this->localizedPokemonName(
+            (int) $snapshot['id'],
+            (string) ($snapshot['name'] ?? $snapshot['label'] ?? ''),
+        );
+
+        return $snapshot;
+    }
+
+    public function localizedPokemonName(int $id, string $fallback, ?string $locale = null): string
+    {
+        $locale ??= app()->getLocale();
+        $cacheKey = "pokeapi:species-label-v2:{$id}:{$locale}";
+        if (Cache::has($cacheKey)) {
+            return Cache::get($cacheKey);
+        }
+
+        $response = Http::acceptJson()->timeout(12)->retry(2, 200)->get("{$this->baseUrl}/pokemon-species/{$id}");
+        if (! $response->successful()) {
+            return ucfirst(str_replace('-', ' ', $fallback));
+        }
+        $label = $this->localizedName($response->json('names', []), $fallback, $locale);
+        Cache::put($cacheKey, $label, now()->addDays(30));
+
+        return $label;
     }
 
     public function catalog(int $page = 1, string $search = '', int $perPage = 30): array
@@ -131,18 +163,62 @@ class PokeApiService
 
         $search = strtolower(trim($search));
         if ($search !== '') {
-            $entries = array_values(array_filter($entries, fn ($entry) => str_contains($entry['name'], $search) || (string) $entry['id'] === $search));
+            $locale = app()->getLocale();
+            $entries = array_values(array_filter($entries, function ($entry) use ($search, $locale) {
+                $localized = strtolower((string) Cache::get("pokeapi:species-label-v2:{$entry['id']}:{$locale}", ''));
+
+                return str_contains($entry['name'], $search)
+                    || str_contains($localized, $search)
+                    || (string) $entry['id'] === $search;
+            }));
         }
         $total = count($entries);
         $lastPage = max(1, (int) ceil($total / $perPage));
         $page = max(1, min($page, $lastPage));
 
+        $pageEntries = array_slice($entries, ($page - 1) * $perPage, $perPage);
+
         return [
-            'data' => array_slice($entries, ($page - 1) * $perPage, $perPage),
+            'data' => $this->localizedCatalogEntries($pageEntries, app()->getLocale()),
             'page' => $page,
             'last_page' => $lastPage,
             'total' => $total,
         ];
+    }
+
+    private function localizedCatalogEntries(array $entries, string $locale): array
+    {
+        $missing = [];
+        foreach ($entries as $entry) {
+            if (! Cache::has("pokeapi:species-label-v2:{$entry['id']}:{$locale}")) {
+                $missing[] = $entry;
+            }
+        }
+
+        if ($missing !== []) {
+            $responses = Http::pool(fn (Pool $pool) => array_map(
+                fn (array $entry) => $pool->as((string) $entry['id'])->acceptJson()->timeout(10)->get("{$this->baseUrl}/pokemon-species/{$entry['id']}"),
+                $missing,
+            ));
+            foreach ($missing as $entry) {
+                $response = $responses[(string) $entry['id']] ?? null;
+                $label = $response && $response->successful()
+                    ? $this->localizedName($response->json('names', []), $entry['name'], $locale)
+                    : ucfirst(str_replace('-', ' ', $entry['name']));
+                if ($response && $response->successful()) {
+                    Cache::put("pokeapi:species-label-v2:{$entry['id']}:{$locale}", $label, now()->addDays(30));
+                }
+            }
+        }
+
+        return array_map(function (array $entry) use ($locale) {
+            $entry['label'] = Cache::get(
+                "pokeapi:species-label-v2:{$entry['id']}:{$locale}",
+                ucfirst(str_replace('-', ' ', $entry['name'])),
+            );
+
+            return $entry;
+        }, $entries);
     }
 
     private function selectMoveRefs(array $moves): array

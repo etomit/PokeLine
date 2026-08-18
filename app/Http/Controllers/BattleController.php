@@ -71,9 +71,28 @@ class BattleController extends Controller
         $battle = $request->session()->get('battle');
         abort_unless($battle && ($battle['state']['phase'] ?? null) === 'active', 409);
 
+        $forced = array_keys(array_filter($battle['state']['forced_switch'] ?? []));
+        if ($forced !== []) {
+            $key = $battle['mode'] === 'solo' ? 'p1' : $forced[0];
+            abort_unless(in_array($key, $forced, true) && $data['action_type'] === 'switch', 409, __('ui.choose_replacement'));
+            $battle['state'] = $engine->resolveForcedSwitch($battle['state'], $key, (int) $data['pokemon_index']);
+            $battle['pending'] = null;
+            $request->session()->put('battle', $battle);
+
+            return response()->json($battle);
+        }
+
         if ($battle['mode'] === 'solo') {
             $aiMove = $engine->chooseAiMove($battle['state']);
             $battle['state'] = $engine->resolveTurn($battle['state'], ['p1' => $data, 'p2' => ['action_type' => 'move', 'move_index' => $aiMove]]);
+            if ($battle['state']['forced_switch']['p2'] ?? false) {
+                $battle['state'] = $engine->resolveForcedSwitch(
+                    $battle['state'],
+                    'p2',
+                    $this->firstAvailableSwitch($battle['state'], 'p2'),
+                    true,
+                );
+            }
         } elseif ($battle['pending'] === null) {
             $battle['pending'] = $data;
             $battle['state']['last_events'] = [['type' => 'handoff', 'text' => __('ui.handoff')]];
@@ -200,6 +219,14 @@ class BattleController extends Controller
             $locked = Battle::whereKey($battle->id)->lockForUpdate()->firstOrFail();
             abort_unless($locked->status === 'active', 409);
             $key = $locked->host_id === $request->user()->id ? 'p1' : 'p2';
+            $forced = array_filter($locked->state['forced_switch'] ?? []);
+            if ($forced !== []) {
+                abort_unless(($forced[$key] ?? false) && $data['action_type'] === 'switch', 409, __('ui.choose_replacement'));
+                $state = $engine->resolveForcedSwitch($locked->state, $key, (int) $data['pokemon_index']);
+                $locked->update(['state' => $state, 'pending_actions' => [], 'version' => $locked->version + 1]);
+
+                return;
+            }
             $pending = $locked->pending_actions ?? [];
             abort_if(isset($pending[$key]), 409, __('ui.action_already_submitted'));
             $pending[$key] = $data;
@@ -240,9 +267,10 @@ class BattleController extends Controller
     private function connectGuest(Battle $battle, Team $team, User $guest, BattleEngine $engine): void
     {
         $battle->load(['hostTeam.pokemon.heldItem', 'host']);
+        $pokeApi = app(PokeApiService::class);
         $state = $engine->createState(
-            $engine->teamSnapshots($battle->hostTeam),
-            $engine->teamSnapshots($team->load('pokemon.heldItem')),
+            array_map($pokeApi->localizeSnapshot(...), $engine->teamSnapshots($battle->hostTeam)),
+            array_map($pokeApi->localizeSnapshot(...), $engine->teamSnapshots($team->load('pokemon.heldItem'))),
             [$battle->host->name, $guest->name],
         );
         $battle->update([
@@ -295,6 +323,17 @@ class BattleController extends Controller
         }
 
         return $team;
+    }
+
+    private function firstAvailableSwitch(array $state, string $key): int
+    {
+        foreach ($state['players'][$key]['roster'] as $index => $pokemon) {
+            if ($index !== $state['players'][$key]['active'] && $pokemon['current_hp'] > 0) {
+                return $index;
+            }
+        }
+
+        return $state['players'][$key]['active'];
     }
 
     private function authorizeParticipant(Request $request, Battle $battle): void

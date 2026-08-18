@@ -37,6 +37,7 @@ return [
     'battle' => 'Combat',
     'turn' => 'Tour',
     'sound' => 'Son',
+    'music' => 'Musique',
     'enabled' => 'activé',
     'disabled' => 'désactivé',
     'choose_attack' => 'Choisissez une attaque',
@@ -129,4 +130,9 @@ return [
     'local_team_name_placeholder' => 'Nom de l’équipe',
     'save_player_team' => 'Enregistrer J:player',
     'load' => 'Charger',
+    'choose_replacement' => 'Choisissez un Pokémon pour continuer.',
+    'waiting_replacement' => 'L’adversaire choisit son prochain Pokémon…',
+    'return_to_menu' => 'Retourner au menu',
+    'victory_message' => 'Votre équipe remporte le combat !',
+    'defeat_message' => 'Votre équipe ne peut plus combattre.',
 ];

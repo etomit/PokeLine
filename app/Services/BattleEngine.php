@@ -18,7 +18,7 @@ class BattleEngine
                 'p1' => ['name' => $names[0], 'active' => 0, 'roster' => $this->prepareRoster($firstTeam)],
                 'p2' => ['name' => $names[1], 'active' => 0, 'roster' => $this->prepareRoster($secondTeam)],
             ],
-            'winner' => null, 'log' => [__('battle.start')], 'last_events' => [],
+            'winner' => null, 'forced_switch' => [], 'log' => [__('battle.start')], 'last_events' => [],
         ];
     }
 
@@ -95,7 +95,7 @@ class BattleEngine
 
     public function resolveTurn(array $state, array $actions): array
     {
-        if (($state['phase'] ?? null) !== 'active') {
+        if (($state['phase'] ?? null) !== 'active' || array_filter($state['forced_switch'] ?? []) !== []) {
             return $state;
         }
 
@@ -150,6 +150,29 @@ class BattleEngine
             }
         }
         $state['last_events'] = $events;
+        $state['log'] = array_slice(array_merge($state['log'], array_column($events, 'text')), -40);
+
+        return $state;
+    }
+
+    public function resolveForcedSwitch(array $state, string $key, int $index, bool $appendEvents = false): array
+    {
+        if (($state['phase'] ?? null) !== 'active' || ! ($state['forced_switch'][$key] ?? false)) {
+            return $state;
+        }
+
+        $before = $state['players'][$key]['active'];
+        $events = [];
+        $this->performSwitch($state, $key, $index, $events);
+        if ($state['players'][$key]['active'] === $before) {
+            return $state;
+        }
+
+        unset($state['forced_switch'][$key]);
+        $state['forced_switch'] = array_filter($state['forced_switch']);
+        $state['last_events'] = $appendEvents
+            ? array_merge($state['last_events'] ?? [], $events)
+            : $events;
         $state['log'] = array_slice(array_merge($state['log'], array_column($events, 'text')), -40);
 
         return $state;
@@ -234,7 +257,7 @@ class BattleEngine
         if (($move['healing'] ?? 0) > 0) {
             $heal = min($actor['max_hp'] - $actor['current_hp'], max(1, (int) floor($actor['max_hp'] * $move['healing'] / 100)));
             $actor['current_hp'] += $heal;
-            $events[] = ['type' => 'heal', 'target' => $actorKey, 'text' => __('battle.heals', ['pokemon' => $actor['label'], 'heal' => $heal])];
+            $events[] = ['type' => 'heal', 'target' => $actorKey, 'amount' => $heal, 'text' => __('battle.heals', ['pokemon' => $actor['label'], 'heal' => $heal])];
         }
         foreach (($move['stat_changes'] ?? []) as $change) {
             $selfTarget = str_contains((string) ($move['target'] ?? ''), 'user');
@@ -355,7 +378,7 @@ class BattleEngine
         if (($move['drain'] ?? 0) > 0 && $actor['current_hp'] > 0) {
             $heal = min($actor['max_hp'] - $actor['current_hp'], max(1, (int) floor($damage * $move['drain'] / 100)));
             $actor['current_hp'] += $heal;
-            $events[] = ['type' => 'heal', 'target' => $actorKey, 'text' => __('battle.heals', ['pokemon' => $actor['label'], 'heal' => $heal])];
+            $events[] = ['type' => 'heal', 'target' => $actorKey, 'amount' => $heal, 'text' => __('battle.heals', ['pokemon' => $actor['label'], 'heal' => $heal])];
         }
         if (($move['drain'] ?? 0) < 0 && $actor['current_hp'] > 0) {
             $actor['current_hp'] = max(0, $actor['current_hp'] - max(1, (int) floor($damage * abs($move['drain']) / 100)));
@@ -363,12 +386,12 @@ class BattleEngine
         if ($actor['held_item'] === 'life-orb' && $actor['current_hp'] > 0) {
             $recoil = max(1, intdiv($actor['max_hp'], 10));
             $actor['current_hp'] = max(0, $actor['current_hp'] - $recoil);
-            $events[] = ['type' => 'recoil', 'target' => $actorKey, 'text' => __('battle.life_orb', ['pokemon' => $actor['label'], 'damage' => $recoil])];
+            $events[] = ['type' => 'recoil', 'target' => $actorKey, 'amount' => $recoil, 'text' => __('battle.life_orb', ['pokemon' => $actor['label'], 'damage' => $recoil])];
         }
         if ($target['held_item'] === 'rocky-helmet' && $move['damage_class'] === 'physical' && $actor['current_hp'] > 0) {
             $recoil = max(1, intdiv($actor['max_hp'], 6));
             $actor['current_hp'] = max(0, $actor['current_hp'] - $recoil);
-            $events[] = ['type' => 'recoil', 'target' => $actorKey, 'text' => __('battle.rocky_helmet', ['pokemon' => $actor['label'], 'damage' => $recoil])];
+            $events[] = ['type' => 'recoil', 'target' => $actorKey, 'amount' => $recoil, 'text' => __('battle.rocky_helmet', ['pokemon' => $actor['label'], 'damage' => $recoil])];
         }
         if (in_array($target['ability'] ?? null, ['static', 'flame-body'], true) && $move['damage_class'] === 'physical' && $actor['status'] === null && random_int(1, 100) <= 30) {
             $actor['status'] = $target['ability'] === 'static' ? 'paralysis' : 'burn';
@@ -386,19 +409,19 @@ class BattleEngine
             $divisor = $pokemon['status'] === 'burn' ? 16 : 8;
             $damage = max(1, intdiv($pokemon['max_hp'], $divisor));
             $pokemon['current_hp'] = max(0, $pokemon['current_hp'] - $damage);
-            $events[] = ['type' => 'status-damage', 'target' => $key, 'text' => __('battle.status_damage', ['pokemon' => $pokemon['label'], 'damage' => $damage])];
+            $events[] = ['type' => 'status-damage', 'target' => $key, 'amount' => $damage, 'text' => __('battle.status_damage', ['pokemon' => $pokemon['label'], 'damage' => $damage])];
         }
         $weather = $state['weather'] ?? null;
         $immune = $weather === 'sandstorm' ? array_intersect($pokemon['types'], ['rock', 'ground', 'steel']) !== [] : in_array('ice', $pokemon['types'], true);
         if (in_array($weather, ['sandstorm', 'hail'], true) && ! $immune && $pokemon['current_hp'] > 0) {
             $damage = max(1, intdiv($pokemon['max_hp'], 16));
             $pokemon['current_hp'] = max(0, $pokemon['current_hp'] - $damage);
-            $events[] = ['type' => 'weather-damage', 'target' => $key, 'text' => __('battle.weather_damage', ['pokemon' => $pokemon['label'], 'damage' => $damage])];
+            $events[] = ['type' => 'weather-damage', 'target' => $key, 'amount' => $damage, 'text' => __('battle.weather_damage', ['pokemon' => $pokemon['label'], 'damage' => $damage])];
         }
         if ($pokemon['held_item'] === 'leftovers' && $pokemon['current_hp'] > 0 && $pokemon['current_hp'] < $pokemon['max_hp']) {
             $heal = min(max(1, intdiv($pokemon['max_hp'], 16)), $pokemon['max_hp'] - $pokemon['current_hp']);
             $pokemon['current_hp'] += $heal;
-            $events[] = ['type' => 'heal', 'target' => $key, 'text' => __('battle.leftovers', ['pokemon' => $pokemon['label'], 'heal' => $heal])];
+            $events[] = ['type' => 'heal', 'target' => $key, 'amount' => $heal, 'text' => __('battle.leftovers', ['pokemon' => $pokemon['label'], 'heal' => $heal])];
         }
     }
 
@@ -410,7 +433,7 @@ class BattleEngine
         $heal = min(max(1, intdiv($pokemon['max_hp'], 4)), $pokemon['max_hp'] - $pokemon['current_hp']);
         $pokemon['current_hp'] += $heal;
         $pokemon['item_consumed'] = true;
-        $events[] = ['type' => 'heal', 'target' => $key, 'text' => __('battle.sitrus', ['pokemon' => $pokemon['label'], 'heal' => $heal])];
+        $events[] = ['type' => 'heal', 'target' => $key, 'amount' => $heal, 'text' => __('battle.sitrus', ['pokemon' => $pokemon['label'], 'heal' => $heal])];
     }
 
     private function performSwitch(array &$state, string $key, int $index, array &$events): void
@@ -441,15 +464,18 @@ class BattleEngine
     {
         $active = $state['players'][$key]['active'];
         if ($state['players'][$key]['roster'][$active]['current_hp'] > 0) {
+            unset($state['forced_switch'][$key]);
+
+            return;
+        }
+        if ($state['forced_switch'][$key] ?? false) {
             return;
         }
         $fainted = $state['players'][$key]['roster'][$active]['label'];
         $events[] = ['type' => 'faint', 'target' => $key, 'text' => __('battle.fainted', ['pokemon' => $fainted])];
         foreach ($state['players'][$key]['roster'] as $index => $pokemon) {
-            if ($pokemon['current_hp'] > 0) {
-                $state['players'][$key]['active'] = $index;
-                $events[] = ['type' => 'switch', 'target' => $key, 'text' => __('battle.enters', ['pokemon' => $pokemon['label']])];
-                $this->entryAbility($state, $key, $events);
+            if ($index !== $active && $pokemon['current_hp'] > 0) {
+                $state['forced_switch'][$key] = true;
 
                 return;
             }

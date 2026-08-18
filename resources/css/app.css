@@ -206,3 +206,44 @@ html{font-size:18px}
 /* Keep both combatants clearly above the lower edge of the arena. */
 .opponent-platform{top:7%}
 .player-platform{bottom:15%}
+
+/* Native dialogs need an explicit center because their opening animation uses transforms. */
+.pokedex-dialog[open]{position:fixed;inset:50% auto auto 50%;margin:0;transform:translate(-50%,-50%);animation:pokedex-dialog-pop .24s ease-out}
+@keyframes pokedex-dialog-pop{from{opacity:0;transform:translate(-50%,calc(-50% + 12px)) scale(.97)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+
+/* Fourth-generation battle pacing and result presentation. */
+.battle-app{position:relative}
+.battle-log{display:none}
+.battle-message{display:flex;align-items:flex-start;justify-content:flex-start;padding:25px 30px;font-size:1.08rem;line-height:1.55;text-align:left}
+.battle-message.message-reveal{animation:message-reveal .28s steps(4)}
+.hp-fill{transition:width .76s linear,background-color .2s}
+.lunge-right{animation:lunge-right-clean .62s cubic-bezier(.22,.8,.3,1)}
+.lunge-left{animation:lunge-left-clean .62s cubic-bezier(.22,.8,.3,1)}
+.hit-shake{animation:hit-shake-clean .48s steps(5)}
+.faint-out{animation:faint-out .68s ease-in forwards!important}
+.switch-in{animation:switch-in .72s cubic-bezier(.18,.8,.25,1)}
+.sprite-platform img.is-fainted{opacity:0}
+.forced-switch{grid-column:1/-1;min-height:118px;border-top:5px solid #e39a2d;background:linear-gradient(#eaf6f5,#c8e2e5)}
+.forced-switch>strong{min-width:155px;color:#fff;background:#3d6f9c;font-size:.7rem}
+.battle-result{position:absolute;z-index:80;inset:0;display:grid;place-content:center;justify-items:center;padding:30px;color:#fff;background:radial-gradient(circle at 50% 35%,rgba(73,126,175,.96),rgba(20,27,50,.98) 68%);text-align:center;animation:result-enter .65s ease-out}
+.battle-result[hidden]{display:none!important}
+.battle-result.defeat{background:radial-gradient(circle at 50% 35%,rgba(118,67,102,.97),rgba(29,20,40,.99) 68%)}
+.battle-result h2{margin:8px 0;font-size:clamp(2.6rem,7vw,6rem);text-transform:uppercase;text-shadow:0 5px 0 rgba(0,0,0,.32)}
+.battle-result>p:not(.eyebrow){font-size:1.1rem}
+.battle-result .pixel-button{margin-top:20px;min-width:260px;background:#e28b24}
+.battle-result.defeat .pixel-button{background:#a92950}
+.result-emblem{position:relative;width:105px;height:105px;border:9px solid #fff;border-radius:50%;background:linear-gradient(#e94b58 0 46%,#222337 47% 55%,#f4f5e9 56%);box-shadow:0 0 0 7px #28304c,0 0 36px rgba(255,255,255,.55)}
+.result-emblem i{position:absolute;left:50%;top:50%;width:32px;height:32px;border:7px solid #282a3d;border-radius:50%;background:#fff;transform:translate(-50%,-50%)}
+.battle-result.victory .result-emblem{animation:victory-emblem 1.2s ease-in-out infinite alternate}
+.battle-result.defeat .result-emblem{filter:grayscale(.7);animation:defeat-emblem .8s ease-out forwards}
+@keyframes message-reveal{from{opacity:.25;transform:translateY(5px)}to{opacity:1;transform:none}}
+@keyframes lunge-right-clean{0%,100%{transform:translate(0)}45%{transform:translate(75px,-12px) scale(1.06)}70%{transform:translate(58px,-7px)}}
+@keyframes lunge-left-clean{0%,100%{transform:translate(0)}45%{transform:translate(-75px,12px) scale(1.06)}70%{transform:translate(-58px,7px)}}
+@keyframes hit-shake-clean{0%,100%{transform:translate(0);filter:brightness(1)}20%{transform:translate(-10px,-3px);filter:brightness(2)}40%{transform:translate(11px,2px)}60%{transform:translate(-8px,1px);filter:brightness(1.6)}80%{transform:translate(7px,-2px)}}
+@keyframes faint-out{0%{opacity:1;transform:translateY(0);filter:brightness(1)}35%{filter:brightness(2)}100%{opacity:0;transform:translateY(90px) scaleY(.35);filter:brightness(.5)}}
+@keyframes switch-in{0%{opacity:0;transform:scale(.2);filter:brightness(3)}55%{opacity:1;transform:scale(1.12);filter:brightness(1.5)}100%{transform:scale(1);filter:brightness(1)}}
+@keyframes result-enter{from{opacity:0;transform:scale(1.04)}to{opacity:1;transform:scale(1)}}
+@keyframes victory-emblem{to{transform:translateY(-7px);box-shadow:0 0 0 7px #28304c,0 0 55px #ffe678}}
+@keyframes defeat-emblem{to{transform:translateY(8px) rotate(-8deg);opacity:.8}}
+.battle-audio-controls{display:flex;align-items:center;gap:12px}.battle-toolbar button:hover{color:#ddff76}.battle-audio-controls button{white-space:nowrap}
+@media(max-width:620px){.battle-audio-controls{gap:4px}.battle-audio-controls button{font-size:.65rem}}

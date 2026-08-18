@@ -6,10 +6,14 @@
         $battleTranslations = [
             'turn' => __('ui.turn'), 'choose' => __('ui.choose_attack'),
             'waiting' => __('ui.waiting_opponent'), 'victory' => __('ui.victory'),
-            'defeat' => __('ui.defeat'), 'sound' => __('ui.sound'), 'rewards' => __('ui.rewards'),
+            'defeat' => __('ui.defeat'), 'sound' => __('ui.sound'), 'music' => __('ui.music'), 'rewards' => __('ui.rewards'),
             'switch' => __('ui.switch_pokemon'), 'weather' => __('ui.weather'),
             'types' => __('types'),
             'hp' => __('ui.hp'),
+            'chooseReplacement' => __('ui.choose_replacement'),
+            'waitingReplacement' => __('ui.waiting_replacement'),
+            'victoryMessage' => __('ui.victory_message'),
+            'defeatMessage' => __('ui.defeat_message'),
         ];
     @endphp
     @if($kind === 'online' && $battle->status === 'waiting')
@@ -21,7 +25,14 @@
          data-state-url="{{ $kind === 'online' ? route('battle.online.state', $battle) : route('battle.session.state') }}"
          data-action-url="{{ $kind === 'online' ? route('battle.online.action', $battle) : route('battle.session.action') }}"
          data-translations='@json($battleTranslations)'>
-        <div class="battle-toolbar"><span id="turn-label">{{ __('ui.turn') }} 1</span><span id="weather-label"></span><button id="sound-toggle" type="button">🔊 {{ __('ui.sound') }}</button></div>
+        <div class="battle-toolbar">
+            <span id="turn-label">{{ __('ui.turn') }} 1</span>
+            <span id="weather-label"></span>
+            <div class="battle-audio-controls">
+                <button id="music-toggle" type="button">🎵 {{ __('ui.music') }}</button>
+                <button id="sound-toggle" type="button">🔊 {{ __('ui.sound') }}</button>
+            </div>
+        </div>
         <div class="battle-screen">
             <div class="scanlines"></div>
             <div id="opponent-hud" class="combatant-hud opponent"></div>
@@ -35,6 +46,14 @@
             <section><strong>{{ __('ui.player_two') }}</strong><div id="local-moves-p2" class="moves-grid"></div></section>
         </div>
         <div id="battle-log" class="battle-log" aria-live="polite"></div>
+        <section id="battle-result" class="battle-result" hidden>
+            <div class="result-emblem" aria-hidden="true"><i></i></div>
+            <p class="eyebrow">BATTLE RESULT</p>
+            <h2 data-result-title></h2>
+            <p data-result-message></p>
+            <p class="result-rewards" data-result-rewards hidden></p>
+            <a class="pixel-button" href="{{ route('home') }}">{{ __('ui.return_to_menu') }}</a>
+        </section>
     </div>
 </section>
 @endsection
