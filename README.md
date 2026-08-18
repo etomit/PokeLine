@@ -44,13 +44,87 @@ Par défaut, SQLite est utilisé. Sous XAMPP, activez `extension=zip` pour Compo
 
 ## Déploiement Railway
 
-1. Créer un projet Railway et y ajouter un service PostgreSQL.
-2. Déployer ce dépôt dans un service applicatif.
-3. Ajouter les variables `APP_KEY` (obtenue par `php artisan key:generate --show`), `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL=https://...`, `DB_CONNECTION=pgsql`, `DB_URL=${{Postgres.DATABASE_URL}}`, `LOG_CHANNEL=stderr` et `LOG_STDERR_FORMATTER=\Monolog\Formatter\JsonFormatter`. Le service applicatif exécute automatiquement `php artisan migrate --force` avant chaque déploiement.
-4. Créer un second service Railway depuis le même dépôt, définir son chemin de configuration sur `/railway.reverb.json`, puis lui générer un domaine public.
-5. Définir sur les deux services les mêmes valeurs aléatoires pour `REVERB_APP_ID`, `REVERB_APP_KEY` et `REVERB_APP_SECRET`.
-6. Définir `BROADCAST_CONNECTION=reverb`, `REVERB_HOST=<domaine public du service Reverb>`, `REVERB_PORT=443`, `REVERB_SCHEME=https` et `REVERB_ALLOWED_ORIGINS=<APP_URL>` sur les deux services.
-7. Redéployer d’abord Reverb, puis l’application, et vérifier `/up` ainsi que l’indicateur « Temps réel connecté » dans un combat.
+Railway doit contenir trois services nommés exactement `PokeLine`, `Reverb` et `Postgres`. Le nom exact est important, car il est utilisé dans les références `${{Service.VARIABLE}}`.
+
+### 1. Créer le service Reverb
+
+1. Depuis le projet Railway, choisir **New > GitHub Repo** et sélectionner le même dépôt que `PokeLine`.
+2. Nommer ce nouveau service `Reverb`.
+3. Dans **Settings > Config as Code > Config File Path**, saisir `/railway.reverb.json`.
+4. Dans **Settings > Networking**, cliquer sur **Generate Domain**. Il n'est pas nécessaire de recopier ce domaine : Railway l'expose automatiquement dans `Reverb.RAILWAY_PUBLIC_DOMAIN`.
+
+### 2. Créer les trois identifiants Reverb partagés
+
+Ces identifiants ne sont pas fournis par un service externe : c'est nous qui les créons une seule fois.
+
+- `REVERB_APP_ID` identifie l'application dans Reverb. La valeur fixe `pokeline-production` convient.
+- `REVERB_APP_KEY` est l'identifiant public transmis au navigateur.
+- `REVERB_APP_SECRET` signe les communications serveur et doit rester secret.
+
+Dans un terminal local, générer la clé et le secret :
+
+```bash
+php -r "echo bin2hex(random_bytes(16)), PHP_EOL;"
+php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
+```
+
+Dans **Project Settings > Shared Variables**, créer :
+
+```env
+REVERB_APP_ID=pokeline-production
+REVERB_APP_KEY=COLLER_LE_RESULTAT_DE_LA_PREMIERE_COMMANDE
+REVERB_APP_SECRET=COLLER_LE_RESULTAT_DE_LA_DEUXIEME_COMMANDE
+```
+
+Utiliser ensuite le bouton **Share** pour partager ces trois variables avec `PokeLine` et `Reverb`. Il ne faut pas générer deux jeux de valeurs : les deux services doivent recevoir exactement les mêmes identifiants.
+
+### 3. Variables du service PokeLine
+
+Dans **PokeLine > Variables**, ajouter ou vérifier :
+
+```env
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://${{RAILWAY_PUBLIC_DOMAIN}}
+DB_CONNECTION=pgsql
+DB_URL=${{Postgres.DATABASE_URL}}
+LOG_CHANNEL=stderr
+BROADCAST_CONNECTION=reverb
+REVERB_HOST=${{Reverb.RAILWAY_PUBLIC_DOMAIN}}
+REVERB_PORT=443
+REVERB_SCHEME=https
+```
+
+Conserver la valeur `APP_KEY` déjà utilisée par l'application. Si elle n'existe pas encore, exécuter localement `php artisan key:generate --show` et coller le résultat. La commande de pré-déploiement de `/railway.json` exécute automatiquement les migrations.
+
+### 4. Variables du service Reverb
+
+Dans **Reverb > Variables**, ajouter :
+
+```env
+APP_ENV=production
+APP_DEBUG=false
+APP_KEY=${{PokeLine.APP_KEY}}
+LOG_CHANNEL=stderr
+RAILPACK_PHP_EXTENSIONS=pcntl
+REVERB_HOST=${{RAILWAY_PUBLIC_DOMAIN}}
+REVERB_PORT=443
+REVERB_SCHEME=https
+REVERB_SERVER_HOST=0.0.0.0
+REVERB_ALLOWED_ORIGINS=${{PokeLine.RAILWAY_PUBLIC_DOMAIN}}
+```
+
+`REVERB_ALLOWED_ORIGINS` contient uniquement le domaine, sans `https://` et sans barre oblique finale.
+`RAILPACK_PHP_EXTENSIONS=pcntl` demande à Railpack d'installer le gestionnaire de signaux Unix requis par Reverb. Cette variable doit être présente avant le build du service Reverb.
+
+### 5. Déployer et vérifier
+
+1. Valider les changements Railway avec **Deploy**.
+2. Redéployer d'abord `Reverb`, puis `PokeLine`.
+3. Ouvrir un combat avec deux comptes dans deux navigateurs.
+4. Vérifier que l'interface affiche **Temps réel connecté**.
+
+Il n'y a donc aucun domaine à copier manuellement : `${{RAILWAY_PUBLIC_DOMAIN}}`, `${{Reverb.RAILWAY_PUBLIC_DOMAIN}}`, `${{PokeLine.RAILWAY_PUBLIC_DOMAIN}}` et `${{Postgres.DATABASE_URL}}` sont résolus automatiquement par Railway.
 
 Les actions et les spectateurs sont synchronisés par WebSocket. Un heartbeat de présence, distinct du chargement de l’état du combat, certifie côté serveur qu’un joueur est toujours connecté et attribue la victoire après 90 secondes d’absence adverse.
 
