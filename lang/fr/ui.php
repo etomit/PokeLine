@@ -4,7 +4,7 @@ return [
     'title' => 'PokéLine',
     'tagline' => 'Des combats niveau 100, comme au bon vieux temps.',
     'home' => 'Accueil',
-    'solo' => 'Solo contre IA',
+    'solo' => 'VS IA',
     'solo_desc' => 'Affrontez une IA tactique sans créer de compte.',
     'local' => 'Écran partagé',
     'local_desc' => 'Deux joueurs, un écran, aucun compte requis.',

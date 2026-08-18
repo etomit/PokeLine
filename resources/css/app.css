@@ -278,6 +278,7 @@ html{font-size:18px}
 .online-center-tools a:hover{color:#fff;background:#397db5}
 .online-match-actions{flex:0 0 auto;gap:10px;padding:10px 12px}
 .online-match-actions .online-path{gap:7px;padding:11px 11px 11px 64px;border-width:4px;border-radius:20px}
+.online-match-actions .online-path{align-content:start}
 .online-match-actions .path-number{left:12px;top:12px;width:38px;height:38px;border-width:3px;font-size:.76rem}
 .online-match-actions .path-copy h2{margin:3px 0;font-size:1rem}
 .online-match-actions .online-chip{padding:3px 6px;font-size:.55rem}
@@ -285,6 +286,9 @@ html{font-size:18px}
 .online-match-actions select,.online-match-actions input{min-height:32px;padding:4px 7px;font-size:.7rem}
 .online-match-actions .union-action{min-height:34px;padding:5px 8px;border-width:3px;border-radius:8px;box-shadow:2px 2px 0 #34495b;font-size:.64rem}
 .online-match-actions .private-actions{grid-template-columns:1fr 24px 1fr;gap:6px}
+.online-match-actions .public-path form{grid-template-columns:minmax(170px,1fr) minmax(190px,.85fr);align-items:end}
+.online-match-actions .private-actions form:last-child{grid-template-columns:repeat(2,minmax(0,1fr))}
+.online-match-actions .private-actions form:last-child .union-action{grid-column:1/-1}
 .online-match-actions .or-divider span{width:24px;height:24px;font-size:.52rem}
 .online-center-grid{display:grid;flex:1;min-height:0;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:0 12px 12px}
 .online-center-column{display:grid;min-height:0;grid-auto-rows:minmax(0,1fr);gap:10px}
@@ -345,6 +349,7 @@ html{font-size:18px}
 @media(max-width:650px){
     .online-center-grid .online-battle-grid,.online-inventory-list{grid-template-columns:1fr}
     .online-match-actions .private-actions{grid-template-columns:1fr}
+    .online-match-actions .public-path form,.online-match-actions .private-actions form:last-child{grid-template-columns:1fr}
     .online-center-grid .trainer-search-card{grid-template-columns:36px 1fr}
     .online-center-grid .trainer-search-card>*{grid-column:auto!important}
 }

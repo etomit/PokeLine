@@ -352,6 +352,14 @@ class BattleController extends Controller
             'opponent_missing_for' => $opponentMissingFor,
             'timeout' => 90,
             'battle' => $finishedByTimeout ? $this->broadcastPayload($battle) : null,
+            'sync' => [
+                'status' => $battle->status,
+                'version' => $battle->version,
+                'submitted' => [
+                    'p1' => isset(($battle->pending_actions ?? [])['p1']),
+                    'p2' => isset(($battle->pending_actions ?? [])['p2']),
+                ],
+            ],
         ]);
     }
 

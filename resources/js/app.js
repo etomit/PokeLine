@@ -14,31 +14,32 @@ let soundEnabled = localStorage.getItem('pokeline_sound') !== 'off';
 let musicEnabled = localStorage.getItem('pokeline_music') !== 'off';
 let soundVolume = storedVolume('pokeline_sound_volume', .75);
 let musicVolume = storedVolume('pokeline_music_volume', .65);
+const isEmbeddedGame = window.self !== window.top;
 
 const pageMusicTheme = document.querySelector('#battle-app')
     ? 'battle'
     : document.querySelector('#world-hub, .arcade-setup, .online-center-room, .online-team-page, .pokedex-page') ? 'menu' : null;
 const musicThemes = {
     menu: {
-        tempo: 116,
-        drumStyle: 'light',
-        lead: [72, 76, 79, 76, 74, 77, 81, 77, 72, 76, 79, 83, 81, 79, 76, null, 69, 72, 76, 72, 71, 74, 77, 74, 69, 72, 76, 79, 77, 74, 72, null],
-        harmony: [64, null, 67, null, 65, null, 69, null, 64, null, 67, null, 69, null, 67, null, 60, null, 64, null, 62, null, 65, null, 60, null, 64, null, 65, null, 64, null],
-        bass: [48, null, 48, null, 53, null, 53, null, 48, null, 48, null, 55, null, 55, null, 45, null, 45, null, 50, null, 50, null, 45, null, 45, null, 43, null, 48, null],
+        tempo: 144,
+        drumStyle: 'adventure',
+        lead: [76, 79, 84, 79, 77, 81, 84, 88, 86, 84, 81, 79, 81, 84, 88, 91, 79, 83, 86, 83, 81, 84, 88, 84, 79, 81, 83, 86, 88, 86, 84, 81],
+        harmony: [67, 72, 76, 72, 69, 72, 77, 72, 71, 74, 79, 74, 72, 76, 79, 76, 71, 74, 79, 74, 72, 76, 81, 76, 67, 72, 76, 72, 69, 74, 77, 72],
+        bass: [48, 55, 48, 55, 53, 60, 53, 60, 55, 62, 55, 62, 57, 64, 55, 62, 52, 59, 52, 59, 53, 60, 55, 62, 48, 55, 52, 59, 53, 60, 55, 48],
     },
     battle: {
-        tempo: 158,
+        tempo: 178,
         drumStyle: 'drive',
-        lead: [76, 76, 79, 81, 83, 81, 79, 76, 74, 74, 77, 79, 81, 79, 77, 74, 76, 79, 84, 83, 81, 79, 77, 79, 81, 84, 88, 86, 84, 83, 81, 79],
-        harmony: [67, null, 71, null, 72, null, 71, null, 65, null, 69, null, 70, null, 69, null, 67, null, 72, null, 69, null, 71, null, 72, null, 76, null, 74, null, 71, null],
-        bass: [40, 40, 40, 43, 45, 45, 43, 40, 38, 38, 38, 41, 43, 43, 41, 38, 40, 40, 43, 45, 47, 47, 45, 43, 45, 45, 48, 47, 45, 43, 40, 40],
+        lead: [76, 79, 83, 88, 86, 83, 81, 79, 76, 79, 84, 91, 88, 86, 84, 81, 78, 81, 85, 90, 88, 85, 83, 81, 79, 83, 86, 95, 93, 90, 86, 83],
+        harmony: [67, 71, 74, 79, 77, 74, 72, 71, 67, 72, 76, 79, 76, 74, 72, 69, 69, 73, 76, 81, 78, 76, 73, 69, 71, 74, 79, 83, 81, 78, 74, 71],
+        bass: [40, 40, 47, 40, 43, 43, 50, 43, 45, 45, 52, 45, 47, 47, 54, 47, 42, 42, 49, 42, 45, 45, 52, 45, 47, 47, 54, 52, 50, 47, 45, 43],
     },
     victory: {
-        tempo: 132,
+        tempo: 156,
         drumStyle: 'fanfare',
-        lead: [72, 76, 79, 84, 79, 84, 88, 91, 88, 84, 79, 76, 84, 88, 91, null],
-        harmony: [64, 67, 72, 76, 72, 76, 79, 84, 79, 76, 72, 67, 76, 79, 84, null],
-        bass: [48, null, 52, null, 55, null, 60, null, 55, null, 52, null, 48, 55, 60, null],
+        lead: [72, 76, 79, 84, 79, 84, 88, 91, 88, 91, 96, 91, 88, 84, 91, 96],
+        harmony: [64, 67, 72, 76, 72, 76, 79, 84, 79, 84, 88, 84, 79, 76, 84, 88],
+        bass: [48, 55, 52, 60, 55, 60, 64, 60, 55, 62, 60, 64, 55, 60, 64, 72],
     },
     defeat: {
         tempo: 92,
@@ -121,6 +122,12 @@ const playChiptuneDrums = (context, output, start, index, style) => {
         playNoise(context, output, start, .035, index % 2 ? .018 : .027, 5200);
         return;
     }
+    if (style === 'adventure') {
+        if (index % 8 === 0 || index % 8 === 3) playKick(context, output, start, index % 8 === 0 ? .12 : .075);
+        if (index % 8 === 4) playNoise(context, output, start, .095, .052, 1450);
+        playNoise(context, output, start, .028, index % 2 ? .014 : .024, 5800);
+        return;
+    }
     if (style === 'light') {
         if (index % 8 === 0) playKick(context, output, start, .08);
         if (index % 8 === 4) playNoise(context, output, start, .09, .035, 1600);
@@ -153,8 +160,11 @@ const stopMusic = () => {
 };
 
 const startMusic = async themeName => {
+    if (isEmbeddedGame) {
+        window.parent.postMessage({type: 'pokeline:music-theme', theme: themeName}, window.location.origin);
+        return;
+    }
     if (!musicEnabled || !musicUnlocked || !musicThemes[themeName] || document.hidden) return;
-    if (themeName === 'menu' && document.querySelector('#game-space-dialog')?.open) return;
     if (activeMusicTheme === themeName && musicContext) {
         if (musicContext.state === 'suspended') await musicContext.resume().catch(() => {});
         return;
@@ -201,7 +211,10 @@ const updateMusicPreference = enabled => {
     localStorage.setItem('pokeline_music', enabled ? 'on' : 'off');
     if (musicSetting) musicSetting.checked = enabled;
     if (enabled) startMusic(currentMusicTheme());
-    else stopMusic();
+    else {
+        stopMusic();
+        if (isEmbeddedGame) window.parent.postMessage({type: 'pokeline:music-stop'}, window.location.origin);
+    }
 };
 
 const updateSoundPreference = enabled => {
@@ -232,18 +245,22 @@ const updateSoundVolume = value => {
 };
 
 if (pageMusicTheme) {
-    const unlockMusic = () => {
-        musicUnlocked = true;
+    if (isEmbeddedGame) {
         startMusic(currentMusicTheme());
-    };
-    window.addEventListener('pointerdown', unlockMusic, {once: true});
-    window.addEventListener('keydown', unlockMusic, {once: true});
-    document.addEventListener('visibilitychange', () => {
-        if (document.hidden) stopMusic();
-        else if (musicUnlocked) startMusic(currentMusicTheme());
-    });
-    window.addEventListener('pagehide', stopMusic);
-    if (musicUnlocked) startMusic(currentMusicTheme());
+    } else {
+        const unlockMusic = () => {
+            musicUnlocked = true;
+            startMusic(currentMusicTheme());
+        };
+        window.addEventListener('pointerdown', unlockMusic, {once: true});
+        window.addEventListener('keydown', unlockMusic, {once: true});
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) stopMusic();
+            else if (musicUnlocked) startMusic(currentMusicTheme());
+        });
+        window.addEventListener('pagehide', stopMusic);
+        if (musicUnlocked) startMusic(currentMusicTheme());
+    }
 }
 
 window.addEventListener('storage', event => {
@@ -311,7 +328,6 @@ if (hub) {
 
     const displayName = key => document.querySelector(`[data-destination="${key}"]`)?.textContent.replace(/^\s*\d+/, '').trim() || key;
     const openGame = key => {
-        stopMusic();
         gameFrame.src = destinations[key].url;
         gameDialog.showModal();
     };
@@ -371,7 +387,22 @@ if (hub) {
         musicEnabled = localStorage.getItem('pokeline_music') !== 'off';
         if (musicEnabled) startMusic('menu');
     });
-    window.addEventListener('message', event => { if (event.origin === window.location.origin && event.data === 'pokeline:close-game') gameDialog.close(); });
+    window.addEventListener('message', event => {
+        if (event.origin !== window.location.origin) return;
+        if (event.data === 'pokeline:close-game') {
+            gameDialog.close();
+            return;
+        }
+        if (event.data?.type === 'pokeline:music-stop') {
+            stopMusic();
+            return;
+        }
+        if (event.data?.type === 'pokeline:music-theme' && musicThemes[event.data.theme]) {
+            musicEnabled = localStorage.getItem('pokeline_music') !== 'off';
+            musicUnlocked = true;
+            if (musicEnabled) startMusic(event.data.theme);
+        }
+    });
     hub.addEventListener('click', () => hub.focus());
     update(); walk(); hub.focus();
 }
@@ -668,6 +699,7 @@ if (battleApp) {
     let animating = false;
     let refreshing = false;
     let renderedVersion = null;
+    let realtimeQueue = Promise.resolve();
     const spectator = config.kind === 'spectator';
     let opponentPresent = null;
     let opponentMissingFor = 0;
@@ -1051,12 +1083,19 @@ if (battleApp) {
             refreshing = false;
         }
     };
-    const receiveRealtime = async payload => {
-        const next = personalized(payload);
-        const version = next.version;
-        const shouldAnimate = renderedVersion !== null && version !== renderedVersion;
-        renderedVersion = version;
-        await render(next, shouldAnimate);
+    const receiveRealtime = payload => {
+        realtimeQueue = realtimeQueue.then(async () => {
+            const next = personalized(payload);
+            const version = Number(next.version);
+            if (renderedVersion !== null && version < Number(renderedVersion)) return;
+            const shouldAnimate = renderedVersion !== null && version !== Number(renderedVersion);
+            renderedVersion = version;
+            await render(next, shouldAnimate);
+        }).catch(error => {
+            console.error('[PokéLine] Realtime rendering failed.', error);
+        });
+
+        return realtimeQueue;
     };
     const setConnectionState = (state, text) => {
         if (!els.connection) return;
@@ -1090,7 +1129,18 @@ if (battleApp) {
             const response = await request(config.heartbeatUrl, {method: 'POST'});
             opponentMissingFor = Number(response.opponent_missing_for || 0);
             if (opponentPresent === false) drawPresence();
-            if (response.battle) await receiveRealtime(response.battle);
+            if (response.battle) {
+                await receiveRealtime(response.battle);
+                return;
+            }
+            const sync = response.sync;
+            const ownSubmission = Boolean(sync?.submitted?.[config.you]);
+            const stateIsStale = sync && (
+                Number(sync.version) !== Number(renderedVersion)
+                || sync.status !== currentPayload?.status
+                || ownSubmission !== Boolean(currentPayload?.submitted)
+            );
+            if (stateIsStale) await refresh();
         } catch (error) {
             if (!error.message.includes('409')) setConnectionState('unavailable', config.text.unavailable);
         }
@@ -1106,13 +1156,19 @@ if (battleApp) {
         const channel = window.Echo.join(channelName)
             .here(users => setOpponentPresence(spectator || users.some(user => user.role === 'player' && user.side === otherSide)))
             .joining(user => {
-                if (!spectator && user.role === 'player' && user.side === otherSide) setOpponentPresence(true);
+                if (!spectator && user.role === 'player' && user.side === otherSide) {
+                    setOpponentPresence(true);
+                    refresh();
+                }
             })
             .leaving(user => {
                 if (!spectator && user.role === 'player' && user.side === otherSide) setOpponentPresence(false);
             })
             .listen('.updated', receiveRealtime)
-            .error(() => setConnectionState('unavailable', config.text.unavailable));
+            .error(error => {
+                console.error('[PokéLine] Reverb channel subscription failed.', error);
+                setConnectionState('unavailable', config.text.unavailable);
+            });
 
         window.Echo.connector.pusher.connection.bind('state_change', states => {
             if (states.current === 'connected') {
@@ -1121,6 +1177,7 @@ if (battleApp) {
             } else if (['connecting', 'unavailable'].includes(states.current)) {
                 setConnectionState('connecting', config.text.reconnecting);
             } else if (['failed', 'disconnected'].includes(states.current)) {
+                console.error('[PokéLine] Reverb connection state:', states.current);
                 setConnectionState('unavailable', config.text.unavailable);
             }
         });

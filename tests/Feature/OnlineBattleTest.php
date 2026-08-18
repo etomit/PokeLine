@@ -214,7 +214,11 @@ class OnlineBattleTest extends TestCase
         $this->actingAs($host)->postJson("/online/{$battle->public_id}/heartbeat")
             ->assertOk()
             ->assertJsonPath('status', 'active')
-            ->assertJsonPath('battle', null);
+            ->assertJsonPath('battle', null)
+            ->assertJsonPath('sync.status', 'active')
+            ->assertJsonPath('sync.version', $battle->fresh()->version)
+            ->assertJsonPath('sync.submitted.p1', false)
+            ->assertJsonPath('sync.submitted.p2', false);
 
         $this->assertSame('active', $battle->fresh()->status);
     }

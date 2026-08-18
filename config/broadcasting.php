@@ -1,5 +1,8 @@
 <?php
 
+$reverbHost = env('REVERB_HOST') ?: env('REVERB_PUBLIC_HOST');
+$reverbPublicHost = env('REVERB_PUBLIC_HOST') ?: $reverbHost;
+
 return [
     'default' => env('BROADCAST_CONNECTION', 'null'),
 
@@ -10,10 +13,15 @@ return [
             'secret' => env('REVERB_APP_SECRET'),
             'app_id' => env('REVERB_APP_ID'),
             'options' => [
-                'host' => env('REVERB_HOST', '127.0.0.1'),
+                'host' => $reverbHost,
                 'port' => env('REVERB_PORT', 8080),
                 'scheme' => env('REVERB_SCHEME', 'http'),
                 'useTLS' => env('REVERB_SCHEME', 'http') === 'https',
+            ],
+            'client' => [
+                'host' => $reverbPublicHost,
+                'port' => env('REVERB_PUBLIC_PORT', env('REVERB_PORT', 8080)),
+                'scheme' => env('REVERB_PUBLIC_SCHEME', env('REVERB_SCHEME', 'http')),
             ],
             'client_options' => [],
         ],
