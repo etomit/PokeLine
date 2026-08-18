@@ -1,0 +1,33 @@
+FROM composer:2 AS dependencies
+
+ENV COMPOSER_ALLOW_SUPERUSER=1
+
+WORKDIR /app
+
+COPY composer.json composer.lock ./
+
+RUN composer install \
+    --no-dev \
+    --prefer-dist \
+    --no-interaction \
+    --no-progress \
+    --no-scripts \
+    --optimize-autoloader
+
+FROM php:8.3-cli-alpine
+
+RUN apk add --no-cache libcurl libxml2 \
+    && apk add --no-cache --virtual .php-build-deps $PHPIZE_DEPS curl-dev libxml2-dev \
+    && docker-php-ext-install -j"$(nproc)" pcntl curl dom \
+    && apk del .php-build-deps \
+    && php -r "extension_loaded('pcntl') || throw new RuntimeException('The pcntl extension is missing.');"
+
+WORKDIR /app
+
+COPY . .
+COPY --from=dependencies /app/vendor ./vendor
+
+RUN php artisan package:discover --ansi \
+    && php artisan config:clear
+
+CMD ["sh", "-c", "exec php artisan reverb:start --host=0.0.0.0 --port=${PORT:-8080}"]

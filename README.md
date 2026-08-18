@@ -106,7 +106,6 @@ APP_ENV=production
 APP_DEBUG=false
 APP_KEY=${{PokeLine.APP_KEY}}
 LOG_CHANNEL=stderr
-RAILPACK_PHP_EXTENSIONS=pcntl
 REVERB_HOST=${{RAILWAY_PUBLIC_DOMAIN}}
 REVERB_PORT=443
 REVERB_SCHEME=https
@@ -115,7 +114,7 @@ REVERB_ALLOWED_ORIGINS=${{PokeLine.RAILWAY_PUBLIC_DOMAIN}}
 ```
 
 `REVERB_ALLOWED_ORIGINS` contient uniquement le domaine, sans `https://` et sans barre oblique finale.
-`RAILPACK_PHP_EXTENSIONS=pcntl` demande à Railpack d'installer le gestionnaire de signaux Unix requis par Reverb. Cette variable doit être présente avant le build du service Reverb.
+Le service Reverb est construit avec `Dockerfile.reverb`, qui installe et vérifie automatiquement l'extension Unix `pcntl`. Il ne faut donc pas ajouter `RAILPACK_PHP_EXTENSIONS` à ce service.
 
 ### 5. Déployer et vérifier
 
