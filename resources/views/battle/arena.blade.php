@@ -18,6 +18,11 @@
             'battleFinished' => __('ui.battle_finished'),
             'winnerMessage' => __('ui.winner_message'),
             'liveSpectator' => __('ui.live_spectator'),
+            'connected' => __('ui.websocket_connected'),
+            'reconnecting' => __('ui.websocket_reconnecting'),
+            'unavailable' => __('ui.websocket_unavailable'),
+            'opponentDisconnected' => __('ui.opponent_disconnected'),
+            'autoWinCountdown' => __('ui.auto_win_countdown'),
         ];
         $spectator = $kind === 'spectator';
         $stateUrl = match ($kind) {
@@ -26,6 +31,8 @@
             default => route('battle.session.state'),
         };
         $actionUrl = $kind === 'online' ? route('battle.online.action', $battle) : ($kind === 'session' ? route('battle.session.action') : '');
+        $heartbeatUrl = $kind === 'online' ? route('battle.online.heartbeat', $battle) : '';
+        $you = $kind === 'online' ? ($battle->host_id === auth()->id() ? 'p1' : 'p2') : 'p1';
     @endphp
     @if($kind === 'online' && $battle->status === 'waiting')
         <div class="waiting-card screen-panel">
@@ -40,10 +47,15 @@
          data-mode="{{ $mode }}"
          data-state-url="{{ $stateUrl }}"
          data-action-url="{{ $actionUrl }}"
+         data-heartbeat-url="{{ $heartbeatUrl }}"
+         data-channel="{{ $battle?->public_id }}"
+         data-you="{{ $you }}"
+         data-user-id="{{ auth()->id() }}"
          data-translations='@json($battleTranslations)'>
         <div class="battle-toolbar">
             <span id="turn-label">{{ __('ui.turn') }} 1</span>
             <span id="weather-label">{{ $spectator ? __('ui.live_spectator') : '' }}</span>
+            @if(in_array($kind, ['online', 'spectator'], true))<span id="connection-label" class="connection-label is-connecting">{{ __('ui.websocket_reconnecting') }}</span>@endif
             <div class="battle-audio-controls">
                 @if($kind === 'online' && $battle->status === 'active')
                     <form action="{{ route('battle.online.forfeit', $battle) }}" method="post">@csrf<button class="battle-forfeit" type="submit">{{ __('ui.forfeit') }}</button></form>

@@ -42,4 +42,5 @@ Route::middleware('auth')->group(function () {
     Route::get('/online/{battle}', [BattleController::class, 'onlineShow'])->name('battle.online.show');
     Route::get('/online/{battle}/state', [BattleController::class, 'onlineState'])->name('battle.online.state');
     Route::post('/online/{battle}/action', [BattleController::class, 'onlineAction'])->name('battle.online.action');
+    Route::post('/online/{battle}/heartbeat', [BattleController::class, 'heartbeatOnline'])->name('battle.online.heartbeat');
 });

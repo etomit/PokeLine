@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\BattleUpdated;
 use App\Models\Battle;
 use App\Models\InventoryItem;
 use App\Models\Item;
@@ -14,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class BattleController extends Controller
 {
@@ -186,6 +188,7 @@ class BattleController extends Controller
             'host_team_id' => $teamId,
             'status' => 'waiting',
             'mode' => $mode,
+            'host_last_seen_at' => now(),
         ]);
     }
 
@@ -216,6 +219,7 @@ class BattleController extends Controller
     public function onlineShow(Request $request, Battle $battle)
     {
         $this->authorizeParticipant($request, $battle);
+        $this->touchPresence($battle, $request->user()->id);
 
         return view('battle.arena', ['kind' => 'online', 'mode' => 'online', 'battle' => $battle]);
     }
@@ -304,7 +308,51 @@ class BattleController extends Controller
             ]);
         });
 
+        $this->broadcastBattle($battle->fresh());
+
         return redirect()->route('battle.lobby')->with('success', __('ui.battle_forfeited'));
+    }
+
+    public function heartbeatOnline(Request $request, Battle $battle): JsonResponse
+    {
+        $this->authorizeParticipant($request, $battle);
+        $finishedByTimeout = false;
+        $opponentMissingFor = 0;
+
+        DB::transaction(function () use ($request, $battle, &$finishedByTimeout, &$opponentMissingFor) {
+            $locked = Battle::whereKey($battle->id)->lockForUpdate()->firstOrFail();
+            $side = $locked->host_id === $request->user()->id ? 'p1' : 'p2';
+            $currentField = $side === 'p1' ? 'host_last_seen_at' : 'guest_last_seen_at';
+            $opponentField = $side === 'p1' ? 'guest_last_seen_at' : 'host_last_seen_at';
+            $cutoff = now()->subSeconds(90);
+            $currentWasPresent = $locked->{$currentField}?->greaterThan($cutoff) ?? false;
+            $opponentLastSeen = $locked->{$opponentField};
+
+            if (in_array($locked->status, ['waiting', 'active'], true)) {
+                $locked->forceFill([$currentField => now()])->save();
+            }
+
+            if ($opponentLastSeen) {
+                $opponentMissingFor = max(0, (int) $opponentLastSeen->diffInSeconds(now()));
+            }
+
+            if ($locked->status === 'active' && $currentWasPresent && (! $opponentLastSeen || $opponentLastSeen->lessThanOrEqualTo($cutoff))) {
+                $this->finishDisconnectedBattle($locked, $side);
+                $finishedByTimeout = true;
+            }
+        });
+
+        $battle->refresh();
+        if ($finishedByTimeout) {
+            $this->broadcastBattle($battle);
+        }
+
+        return response()->json([
+            'status' => $battle->status,
+            'opponent_missing_for' => $opponentMissingFor,
+            'timeout' => 90,
+            'battle' => $finishedByTimeout ? $this->broadcastPayload($battle) : null,
+        ]);
     }
 
     public function onlineAction(Request $request, Battle $battle, BattleEngine $engine): JsonResponse
@@ -316,6 +364,8 @@ class BattleController extends Controller
             $locked = Battle::whereKey($battle->id)->lockForUpdate()->firstOrFail();
             abort_unless($locked->status === 'active', 409);
             $key = $locked->host_id === $request->user()->id ? 'p1' : 'p2';
+            $presenceField = $key === 'p1' ? 'host_last_seen_at' : 'guest_last_seen_at';
+            $locked->forceFill([$presenceField => now()])->save();
             $forced = array_filter($locked->state['forced_switch'] ?? []);
             if ($forced !== []) {
                 abort_unless(($forced[$key] ?? false) && $data['action_type'] === 'switch', 409, __('ui.choose_replacement'));
@@ -339,6 +389,8 @@ class BattleController extends Controller
             }
             $locked->update($updates);
         });
+
+        $this->broadcastBattle($battle->fresh());
 
         return $this->onlineState($request, $battle);
     }
@@ -376,7 +428,71 @@ class BattleController extends Controller
             'status' => 'active',
             'state' => $state,
             'pending_actions' => [],
+            'host_last_seen_at' => now(),
+            'guest_last_seen_at' => now(),
         ]);
+        DB::afterCommit(fn () => $this->broadcastBattle($battle->fresh()));
+    }
+
+    private function touchPresence(Battle $battle, int $userId): void
+    {
+        if (! in_array($battle->status, ['waiting', 'active'], true)) {
+            return;
+        }
+
+        $field = $battle->host_id === $userId ? 'host_last_seen_at' : 'guest_last_seen_at';
+        $battle->forceFill([$field => now()])->save();
+    }
+
+    private function finishDisconnectedBattle(Battle $battle, string $winner): void
+    {
+        $winnerId = $winner === 'p1' ? $battle->host_id : $battle->guest_id;
+        $loser = $winner === 'p1' ? 'p2' : 'p1';
+        $state = $battle->state;
+        $winnerName = $state['players'][$winner]['name'] ?? __('ui.battle_trainer');
+        $loserName = $state['players'][$loser]['name'] ?? __('ui.battle_trainer');
+        $event = [
+            'type' => 'finish',
+            'winner' => $winner,
+            'text' => __('battle.disconnected', ['loser' => $loserName, 'winner' => $winnerName]),
+        ];
+        $state['phase'] = 'finished';
+        $state['winner'] = $winner;
+        $state['forced_switch'] = [];
+        $state['last_events'] = [$event];
+        $state['log'] = array_slice(array_merge($state['log'] ?? [], [$event['text']]), -40);
+
+        $battle->update([
+            'status' => 'finished',
+            'state' => $state,
+            'pending_actions' => [],
+            'winner_id' => $winnerId,
+            'version' => $battle->version + 1,
+            'rewards' => $this->grantRewards($battle, $winnerId),
+            'finished_at' => now(),
+        ]);
+    }
+
+    private function broadcastPayload(Battle $battle): array
+    {
+        $pending = $battle->pending_actions ?? [];
+
+        return [
+            'status' => $battle->status,
+            'state' => $battle->state,
+            'version' => $battle->version,
+            'rewards' => $battle->rewards,
+            'submitted' => ['p1' => isset($pending['p1']), 'p2' => isset($pending['p2'])],
+        ];
+    }
+
+    private function broadcastBattle(Battle $battle): void
+    {
+        try {
+            BattleUpdated::dispatch($battle);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
     }
 
     private function validateAction(Request $request): array

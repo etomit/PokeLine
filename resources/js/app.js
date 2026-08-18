@@ -517,30 +517,6 @@ document.querySelectorAll('[data-local-team-library]').forEach(library => {
 });
 
 const battleApp = document.querySelector('#battle-app');
-if (false && battleApp) {
-    const config = {kind:battleApp.dataset.kind,mode:battleApp.dataset.mode,stateUrl:battleApp.dataset.stateUrl,actionUrl:battleApp.dataset.actionUrl,text:JSON.parse(battleApp.dataset.translations)};
-    const csrf = document.querySelector('meta[name="csrf-token"]').content;
-    const els = {playerSprite:document.querySelector('#player-sprite'),opponentSprite:document.querySelector('#opponent-sprite'),playerHud:document.querySelector('#player-hud'),opponentHud:document.querySelector('#opponent-hud'),moves:document.querySelector('#moves'),localP1:document.querySelector('#local-moves-p1'),localP2:document.querySelector('#local-moves-p2'),message:document.querySelector('#battle-message'),log:document.querySelector('#battle-log'),turn:document.querySelector('#turn-label'),weather:document.querySelector('#weather-label'),sound:document.querySelector('#sound-toggle')};
-    let payload = null, busy = false, renderedVersion = null;
-    const request = async (url,options={}) => { const {headers={},...requestOptions}=options;const response=await fetch(url,{...requestOptions,headers:{Accept:'application/json','X-CSRF-TOKEN':csrf,...headers}}); if(!response.ok) throw new Error((await response.json().catch(()=>({}))).message||`HTTP ${response.status}`); return response.json() };
-    const normalized = raw => config.kind==='session'?{state:raw.state,mode:raw.mode,pending:raw.pending,you:'p1',version:raw.state?.turn}:raw;
-    const active=(state,key)=>state.players[key].roster[state.players[key].active];
-    const other=key=>key==='p1'?'p2':'p1';
-    const hpPercent=pokemon=>Math.max(0,Math.round(pokemon.current_hp/pokemon.max_hp*100));
-    const escape=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[char]));
-    const typeLabel=type=>config.text.types?.[type]||type;
-    const hud=pokemon=>{const percent=hpPercent(pokemon),status=pokemon.status?`<b class="status-badge status-${escape(pokemon.status)}">${escape(pokemon.status)}</b>`:'';return `<div class="hud-name"><span>${escape(pokemon.label)} ${status}</span><span>Lv.100</span></div><div class="type-tags">${pokemon.types.map(type=>`<span class="type-${escape(type)}">${escape(typeLabel(type))}</span>`).join('')}${pokemon.ability?`<span>${escape(pokemon.ability)}</span>`:''}</div><div class="hp-line"><b>${escape(config.text.hp)}</b><div class="hp-track"><div class="hp-fill ${percent<25?'low':''}" style="width:${percent}%"></div></div></div><div class="hp-numbers">${pokemon.current_hp} / ${pokemon.max_hp}</div>`};
-    const moveMarkup=(pokemon,disabled)=>pokemon.moves.map((move,index)=>`<button class="move-button type-${escape(move.type)}" data-move="${index}" ${(disabled||(move.current_pp??move.pp??1)<=0)?'disabled':''}><span>${escape(move.label)}</span><small>${escape(typeLabel(move.type))} · ${move.power||'—'} PUI · ${move.current_pp??move.pp??'?'} PP</small></button>`).join('');
-    const switchMarkup=(state,key,disabled)=>`<div class="switch-strip"><strong>${escape(config.text.switch)}</strong>${state.players[key].roster.map((pokemon,index)=>`<button type="button" data-switch="${index}" ${(disabled||index===state.players[key].active||pokemon.current_hp<=0)?'disabled':''} title="${escape(pokemon.label)}"><img src="${escape(pokemon.sprites.front)}" alt=""><span>${escape(pokemon.label)}<small>${pokemon.current_hp}/${pokemon.max_hp}</small></span></button>`).join('')}</div>`;
-    const controlsMarkup=(state,key,disabled)=>moveMarkup(active(state,key),disabled)+switchMarkup(state,key,disabled);
-    const bindActions=container=>{container.querySelectorAll('[data-move]').forEach(button=>button.addEventListener('click',()=>act({action_type:'move',move_index:Number(button.dataset.move)})));container.querySelectorAll('[data-switch]').forEach(button=>button.addEventListener('click',()=>act({action_type:'switch',pokemon_index:Number(button.dataset.switch)})))};
-    const render=(raw,animate=false)=>{payload=normalized(raw);if(!payload.state)return;document.querySelector('.waiting-card')?.remove();battleApp.classList.remove('is-waiting');const state=payload.state,you=payload.you||'p1',enemy=other(you),ownPokemon=active(state,you),enemyPokemon=active(state,enemy);els.playerSprite.src=ownPokemon.sprites.back||ownPokemon.sprites.front;els.playerSprite.alt=ownPokemon.label;els.opponentSprite.src=enemyPokemon.sprites.front;els.opponentSprite.alt=enemyPokemon.label;els.playerHud.innerHTML=hud(ownPokemon);els.opponentHud.innerHTML=hud(enemyPokemon);els.turn.textContent=`${config.text.turn} ${state.turn}`;els.weather.textContent=state.weather?`${config.text.weather}: ${state.weather.toUpperCase()} (${state.weather_turns})`:'';els.log.innerHTML=state.log.slice().reverse().map(line=>`<div>› ${escape(line)}</div>`).join('');const submitted=Boolean(payload.submitted),disabled=busy||submitted||state.phase!=='active';els.moves.innerHTML=controlsMarkup(state,you,disabled);bindActions(els.moves);if((payload.mode||config.mode)==='local'){battleApp.classList.add('local-mode');els.localP1.innerHTML=controlsMarkup(state,'p1',busy||payload.pending!==null||state.phase!=='active');els.localP2.innerHTML=controlsMarkup(state,'p2',busy||payload.pending===null||state.phase!=='active');bindActions(els.localP1);bindActions(els.localP2)}els.message.textContent=state.phase==='finished'?(state.winner===you?config.text.victory:config.text.defeat):(submitted?config.text.waiting:(state.last_events?.at(-1)?.text||config.text.choose));if(state.phase==='finished'&&payload.reward?.length)els.message.textContent+=` ${config.text.rewards}: ${payload.reward.join(', ')}`;if(animate&&state.last_events?.length)animateEvents(state.last_events,you)};
-    const animateEvents=(events,you)=>{const attack=events.find(event=>event.type==='attack'),impact=events.find(event=>['damage','immune'].includes(event.type));if(attack){const attacker=attack.actor===you?els.playerSprite:els.opponentSprite;attacker.classList.remove('lunge-right','lunge-left');void attacker.offsetWidth;attacker.classList.add(attack.actor===you?'lunge-right':'lunge-left');playSound(attack.move)}if(impact)setTimeout(()=>{const target=impact.target===you?els.playerSprite:els.opponentSprite;target.classList.remove('hit-shake');void target.offsetWidth;target.classList.add('hit-shake');playSound('impact',true)},220)};
-    const playSound=(name,impact=false)=>{if(!soundEnabled)return;const AudioContext=window.AudioContext||window.webkitAudioContext;if(!AudioContext)return;const context=new AudioContext(),oscillator=context.createOscillator(),gain=context.createGain();oscillator.type=impact?'square':'sawtooth';const seed=[...name].reduce((sum,char)=>sum+char.charCodeAt(0),0);oscillator.frequency.setValueAtTime(impact?95:160+seed%220,context.currentTime);oscillator.frequency.exponentialRampToValueAtTime(impact?55:80,context.currentTime+.16);gain.gain.setValueAtTime(.07,context.currentTime);gain.gain.exponentialRampToValueAtTime(.001,context.currentTime+.18);oscillator.connect(gain).connect(context.destination);oscillator.start();oscillator.stop(context.currentTime+.19);oscillator.addEventListener('ended',()=>context.close())};
-    const act=async action=>{if(busy)return;busy=true;document.querySelectorAll('.moves-grid button,.switch-strip button').forEach(button=>button.disabled=true);try{const next=await request(config.actionUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(action)});busy=false;render(next,true)}catch(error){els.message.textContent=error.message}finally{busy=false}};
-    const refresh=async()=>{try{const next=await request(config.stateUrl),version=normalized(next).version,shouldAnimate=renderedVersion!==null&&version!==renderedVersion;render(next,shouldAnimate);renderedVersion=version}catch(error){els.message.textContent=error.message}};
-    els.sound.addEventListener('click',()=>{soundEnabled=!soundEnabled;localStorage.setItem('pokeline_sound',soundEnabled?'on':'off');if(soundSetting)soundSetting.checked=soundEnabled;els.sound.textContent=`${soundEnabled?'🔊':'🔇'} ${config.text.sound}`});els.sound.textContent=`${soundEnabled?'🔊':'🔇'} ${config.text.sound}`;refresh();if(config.kind==='online')setInterval(refresh,1400);
-}
 
 if (battleApp) {
     const config = {
@@ -548,6 +524,10 @@ if (battleApp) {
         mode: battleApp.dataset.mode,
         stateUrl: battleApp.dataset.stateUrl,
         actionUrl: battleApp.dataset.actionUrl,
+        heartbeatUrl: battleApp.dataset.heartbeatUrl,
+        channel: battleApp.dataset.channel,
+        you: battleApp.dataset.you || 'p1',
+        userId: battleApp.dataset.userId,
         text: JSON.parse(battleApp.dataset.translations),
     };
     const csrf = document.querySelector('meta[name="csrf-token"]').content;
@@ -566,6 +546,7 @@ if (battleApp) {
         music: document.querySelector('#music-toggle'),
         sound: document.querySelector('#sound-toggle'),
         result: document.querySelector('#battle-result'),
+        connection: document.querySelector('#connection-label'),
     };
     let currentPayload = null;
     let busy = false;
@@ -573,6 +554,9 @@ if (battleApp) {
     let refreshing = false;
     let renderedVersion = null;
     const spectator = config.kind === 'spectator';
+    let opponentPresent = null;
+    let opponentMissingFor = 0;
+    let presenceTimer = null;
 
     const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
     const request = async (url, options = {}) => {
@@ -587,6 +571,12 @@ if (battleApp) {
     const normalized = raw => config.kind === 'session'
         ? {state: raw.state, mode: raw.mode, pending: raw.pending, you: 'p1', version: raw.state?.turn}
         : raw;
+    const personalized = raw => ({
+        ...raw,
+        you: config.you,
+        submitted: spectator ? false : Boolean(raw.submitted?.[config.you]),
+        reward: spectator ? [] : (raw.rewards?.[String(config.userId)] || []),
+    });
     const active = (state, key) => state.players[key].roster[state.players[key].active];
     const other = key => key === 'p1' ? 'p2' : 'p1';
     const hpPercent = (current, maximum) => Math.max(0, Math.min(100, Math.round(current / Math.max(1, maximum) * 100)));
@@ -790,7 +780,10 @@ if (battleApp) {
     };
     const render = async (raw, animate = false) => {
         const next = normalized(raw);
-        if (!next.state) return;
+        if (!next.state) {
+            currentPayload = next;
+            return;
+        }
         document.querySelector('.waiting-card')?.remove();
         battleApp.classList.remove('is-waiting');
         const previous = currentPayload;
@@ -822,6 +815,23 @@ if (battleApp) {
                 body: JSON.stringify(action),
             });
             const nextNormalized = normalized(next);
+            if (config.kind === 'online' && window.Echo?.connector?.pusher?.connection?.state === 'connected') {
+                busy = false;
+
+                await wait(150);
+                const realtimeMatchesResponse = renderedVersion === nextNormalized.version
+                    && Boolean(currentPayload?.submitted) === Boolean(nextNormalized.submitted)
+                    && currentPayload?.status === nextNormalized.status;
+                if (!realtimeMatchesResponse) {
+                    const shouldAnimate = renderedVersion === null || nextNormalized.version !== renderedVersion;
+                    renderedVersion = nextNormalized.version;
+                    await render(next, shouldAnimate);
+                } else if (!animating && currentPayload) {
+                    draw(currentPayload);
+                }
+
+                return;
+            }
             const shouldAnimate = action.action_type === 'switch' || renderedVersion === null || nextNormalized.version !== renderedVersion || config.mode === 'local';
             busy = false;
             await render(next, shouldAnimate);
@@ -847,6 +857,87 @@ if (battleApp) {
             refreshing = false;
         }
     };
+    const receiveRealtime = async payload => {
+        const next = personalized(payload);
+        const version = next.version;
+        const shouldAnimate = renderedVersion !== null && version !== renderedVersion;
+        renderedVersion = version;
+        await render(next, shouldAnimate);
+    };
+    const setConnectionState = (state, text) => {
+        if (!els.connection) return;
+        els.connection.className = `connection-label is-${state}`;
+        els.connection.textContent = text;
+    };
+    const drawPresence = () => {
+        if (!els.connection) return;
+        if (currentPayload?.status !== 'active' || opponentPresent !== false) {
+            setConnectionState('connected', config.text.connected);
+            return;
+        }
+        const remaining = Math.max(0, 90 - opponentMissingFor);
+        setConnectionState('disconnected', `${config.text.opponentDisconnected} · ${config.text.autoWinCountdown.replace(':seconds', remaining)}`);
+    };
+    const setOpponentPresence = present => {
+        opponentPresent = present;
+        if (present) opponentMissingFor = 0;
+        clearInterval(presenceTimer);
+        drawPresence();
+        if (!present) {
+            presenceTimer = window.setInterval(() => {
+                opponentMissingFor = Math.min(90, opponentMissingFor + 1);
+                drawPresence();
+            }, 1000);
+        }
+    };
+    const heartbeat = async () => {
+        if (!config.heartbeatUrl || currentPayload?.state?.phase === 'finished') return;
+        try {
+            const response = await request(config.heartbeatUrl, {method: 'POST'});
+            opponentMissingFor = Number(response.opponent_missing_for || 0);
+            if (opponentPresent === false) drawPresence();
+            if (response.battle) await receiveRealtime(response.battle);
+        } catch (error) {
+            if (!error.message.includes('409')) setConnectionState('unavailable', config.text.unavailable);
+        }
+    };
+    const connectRealtime = () => {
+        if (!window.Echo || !config.channel) {
+            setConnectionState('unavailable', config.text.unavailable);
+            return;
+        }
+
+        const otherSide = config.you === 'p1' ? 'p2' : 'p1';
+        const channelName = `battles.${config.channel}`;
+        const channel = window.Echo.join(channelName)
+            .here(users => setOpponentPresence(spectator || users.some(user => user.role === 'player' && user.side === otherSide)))
+            .joining(user => {
+                if (!spectator && user.role === 'player' && user.side === otherSide) setOpponentPresence(true);
+            })
+            .leaving(user => {
+                if (!spectator && user.role === 'player' && user.side === otherSide) setOpponentPresence(false);
+            })
+            .listen('.updated', receiveRealtime)
+            .error(() => setConnectionState('unavailable', config.text.unavailable));
+
+        window.Echo.connector.pusher.connection.bind('state_change', states => {
+            if (states.current === 'connected') {
+                setConnectionState('connected', config.text.connected);
+                refresh();
+            } else if (['connecting', 'unavailable'].includes(states.current)) {
+                setConnectionState('connecting', config.text.reconnecting);
+            } else if (['failed', 'disconnected'].includes(states.current)) {
+                setConnectionState('unavailable', config.text.unavailable);
+            }
+        });
+
+        window.addEventListener('beforeunload', () => {
+            clearInterval(presenceTimer);
+            window.Echo.leave(channelName);
+        }, {once: true});
+
+        return channel;
+    };
 
     els.sound.addEventListener('click', () => {
         soundEnabled = !soundEnabled;
@@ -861,5 +952,9 @@ if (battleApp) {
     els.sound.textContent = `${soundEnabled ? '🔊' : '🔇'} ${config.text.sound}`;
     els.music.textContent = `${musicEnabled ? '🎵' : '🚫'} ${config.text.music}`;
     refresh();
-    if (config.kind === 'online' || config.kind === 'spectator') setInterval(refresh, 1400);
+    if (config.kind === 'online' || config.kind === 'spectator') connectRealtime();
+    if (config.kind === 'online') {
+        heartbeat();
+        setInterval(heartbeat, 5000);
+    }
 }

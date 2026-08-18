@@ -163,4 +163,9 @@ return [
     'opponent' => 'Adversaire',
     'manage_teams' => 'Gérer mes équipes',
     'team_in_active_battle' => 'Cette équipe participe à une recherche ou à un combat en cours.',
+    'websocket_connected' => 'Temps réel connecté',
+    'websocket_reconnecting' => 'Reconnexion au combat…',
+    'websocket_unavailable' => 'Connexion temps réel indisponible',
+    'opponent_disconnected' => 'Adversaire déconnecté',
+    'auto_win_countdown' => 'Victoire automatique dans :seconds s',
 ];

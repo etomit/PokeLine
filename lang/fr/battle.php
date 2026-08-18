@@ -42,4 +42,5 @@ return [
     'weather_ended' => 'La météo redevient normale.',
     'intimidate' => 'Intimidation de :pokemon baisse l’Attaque adverse !',
     'forfeit' => ':player abandonne le combat !',
+    'disconnected' => ':loser est resté déconnecté. :winner remporte le combat !',
 ];

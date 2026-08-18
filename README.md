@@ -15,6 +15,7 @@ Jeu de combat Pokémon multijoueur réalisé avec Laravel 12, PokeAPI et une arc
 - récompenses atomiques : 1–3 objets au vainqueur et 0–2 au perdant ;
 - jusqu’à 10 équipes persistées, de 1 à 6 Pokémon chacune ;
 - combat en ligne simultané et anti-double-action, verrouillé en transaction SQL ;
+- synchronisation WebSocket avec Laravel Reverb, présence en direct et victoire après 90 secondes de déconnexion adverse ;
 - animation d’attaque/d’impact et effets audio 8-bit désactivables.
 
 ## Architecture
@@ -36,6 +37,7 @@ php artisan key:generate
 php artisan migrate --seed
 npm run build
 php artisan serve
+php artisan reverb:start
 ```
 
 Par défaut, SQLite est utilisé. Sous XAMPP, activez `extension=zip` pour Composer et `extension=pdo_pgsql` si vous utilisez PostgreSQL.
@@ -44,11 +46,13 @@ Par défaut, SQLite est utilisé. Sous XAMPP, activez `extension=zip` pour Compo
 
 1. Créer un projet Railway et y ajouter un service PostgreSQL.
 2. Déployer ce dépôt dans un service applicatif.
-3. Ajouter les variables `APP_KEY` (obtenue par `php artisan key:generate --show`), `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL=https://...`, `DB_CONNECTION=pgsql`, `DB_URL=${{Postgres.DATABASE_URL}}`, `LOG_CHANNEL=stderr` et `LOG_STDERR_FORMATTER=\Monolog\Formatter\JsonFormatter`.
-4. Le fichier `railway.json` utilise Railpack, compile les assets et lance les migrations/seeders avant que Railway serve Laravel via PHP-FPM/Caddy.
-5. Vérifier `/up` après déploiement.
+3. Ajouter les variables `APP_KEY` (obtenue par `php artisan key:generate --show`), `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL=https://...`, `DB_CONNECTION=pgsql`, `DB_URL=${{Postgres.DATABASE_URL}}`, `LOG_CHANNEL=stderr` et `LOG_STDERR_FORMATTER=\Monolog\Formatter\JsonFormatter`. Le service applicatif exécute automatiquement `php artisan migrate --force` avant chaque déploiement.
+4. Créer un second service Railway depuis le même dépôt, définir son chemin de configuration sur `/railway.reverb.json`, puis lui générer un domaine public.
+5. Définir sur les deux services les mêmes valeurs aléatoires pour `REVERB_APP_ID`, `REVERB_APP_KEY` et `REVERB_APP_SECRET`.
+6. Définir `BROADCAST_CONNECTION=reverb`, `REVERB_HOST=<domaine public du service Reverb>`, `REVERB_PORT=443`, `REVERB_SCHEME=https` et `REVERB_ALLOWED_ORIGINS=<APP_URL>` sur les deux services.
+7. Redéployer d’abord Reverb, puis l’application, et vérifier `/up` ainsi que l’indicateur « Temps réel connecté » dans un combat.
 
-La version actuelle synchronise les salons par requêtes courtes toutes les 1,4 seconde. L’état reste transactionnel en PostgreSQL ; Laravel Reverb pourra être ajouté comme service Railway distinct sans changer le moteur de combat.
+Les actions et les spectateurs sont synchronisés par WebSocket. Un heartbeat de présence, distinct du chargement de l’état du combat, certifie côté serveur qu’un joueur est toujours connecté et attribue la victoire après 90 secondes d’absence adverse.
 
 ## Commandes utiles
 

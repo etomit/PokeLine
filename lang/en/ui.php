@@ -163,4 +163,9 @@ return [
     'opponent' => 'Opponent',
     'manage_teams' => 'Manage my teams',
     'team_in_active_battle' => 'This team is currently searching for or playing a battle.',
+    'websocket_connected' => 'Real-time connected',
+    'websocket_reconnecting' => 'Reconnecting to the battle…',
+    'websocket_unavailable' => 'Real-time connection unavailable',
+    'opponent_disconnected' => 'Opponent disconnected',
+    'auto_win_countdown' => 'Automatic victory in :seconds s',
 ];

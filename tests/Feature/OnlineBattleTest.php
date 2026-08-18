@@ -170,6 +170,55 @@ class OnlineBattleTest extends TestCase
             ->assertSee(route('battle.spectate', $battle), false);
     }
 
+    public function test_a_connected_player_wins_after_the_opponent_has_been_offline_for_ninety_seconds(): void
+    {
+        $this->seed(ItemSeeder::class);
+        $host = User::factory()->create(['name' => 'Connected']);
+        $guest = User::factory()->create(['name' => 'Offline']);
+        $hostTeam = $this->team($host, 'Host Team', 100, 70);
+        $guestTeam = $this->team($guest, 'Guest Team', 90, 70);
+
+        $this->actingAs($host)->post('/online/create', ['team_id' => $hostTeam->id]);
+        $battle = Battle::firstOrFail();
+        $this->actingAs($guest)->post("/online/{$battle->public_id}/join", ['team_id' => $guestTeam->id]);
+        $battle->update([
+            'host_last_seen_at' => now()->subSeconds(10),
+            'guest_last_seen_at' => now()->subSeconds(91),
+        ]);
+
+        $this->actingAs($host)->postJson("/online/{$battle->public_id}/heartbeat")
+            ->assertOk()
+            ->assertJsonPath('status', 'finished')
+            ->assertJsonPath('battle.state.winner', 'p1');
+
+        $battle->refresh();
+        $this->assertSame('finished', $battle->status);
+        $this->assertSame($host->id, $battle->winner_id);
+        $this->assertSame('p1', $battle->state['winner']);
+        $this->assertBetween(1, 3, $host->inventory()->sum('quantity'));
+        $this->assertBetween(0, 2, $guest->inventory()->sum('quantity'));
+    }
+
+    public function test_heartbeat_does_not_end_a_battle_while_the_opponent_is_present(): void
+    {
+        $host = User::factory()->create();
+        $guest = User::factory()->create();
+        $hostTeam = $this->team($host, 'Host Team', 100, 70);
+        $guestTeam = $this->team($guest, 'Guest Team', 90, 70);
+
+        $this->actingAs($host)->post('/online/create', ['team_id' => $hostTeam->id]);
+        $battle = Battle::firstOrFail();
+        $this->actingAs($guest)->post("/online/{$battle->public_id}/join", ['team_id' => $guestTeam->id]);
+        $battle->update(['host_last_seen_at' => now(), 'guest_last_seen_at' => now()->subSeconds(89)]);
+
+        $this->actingAs($host)->postJson("/online/{$battle->public_id}/heartbeat")
+            ->assertOk()
+            ->assertJsonPath('status', 'active')
+            ->assertJsonPath('battle', null);
+
+        $this->assertSame('active', $battle->fresh()->status);
+    }
+
     private function team(User $user, string $name, int $speed, int $power): Team
     {
         $team = $user->teams()->create(compact('name'));

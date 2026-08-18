@@ -11,6 +11,7 @@ class Battle extends Model
         'public_id', 'code', 'mode', 'status', 'host_id', 'guest_id',
         'host_team_id', 'guest_team_id', 'winner_id', 'turn', 'version',
         'state', 'pending_actions', 'rewards', 'finished_at',
+        'host_last_seen_at', 'guest_last_seen_at',
     ];
 
     protected function casts(): array
@@ -20,6 +21,8 @@ class Battle extends Model
             'pending_actions' => 'array',
             'rewards' => 'array',
             'finished_at' => 'datetime',
+            'host_last_seen_at' => 'datetime',
+            'guest_last_seen_at' => 'datetime',
         ];
     }
 
