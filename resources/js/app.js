@@ -21,7 +21,7 @@ const pageMusicTheme = document.querySelector('#battle-app')
     : document.querySelector('#world-hub, .arcade-setup, .online-center-room, .online-team-page, .pokedex-page') ? 'menu' : null;
 const musicThemes = {
     menu: {
-        tempo: 144,
+        tempo: 135,
         drumStyle: 'adventure',
         lead: [76, 79, 84, 79, 77, 81, 84, 88, 86, 84, 81, 79, 81, 84, 88, 91, 79, 83, 86, 83, 81, 84, 88, 84, 79, 81, 83, 86, 88, 86, 84, 81],
         harmony: [67, 72, 76, 72, 69, 72, 77, 72, 71, 74, 79, 74, 72, 76, 79, 76, 71, 74, 79, 74, 72, 76, 81, 76, 67, 72, 76, 72, 69, 74, 77, 72],
