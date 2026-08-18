@@ -31,18 +31,18 @@ class AuthController extends Controller
         Auth::login($user);
         $request->session()->regenerate();
 
-        return redirect()->route('home');
+        return redirect()->to($this->destination($request));
     }
 
     public function login(Request $request)
     {
         $credentials = $request->validate(['email' => ['required', 'email'], 'password' => ['required', 'string']]);
         if (! Auth::attempt($credentials, $request->boolean('remember'))) {
-            return back()->withErrors(['email' => __('auth.failed')])->onlyInput('email');
+            return back()->withErrors(['email' => __('auth.failed')])->withInput($request->only('email', 'next'));
         }
         $request->session()->regenerate();
 
-        return redirect()->intended(route('home'));
+        return redirect()->intended($this->destination($request));
     }
 
     public function logout(Request $request)
@@ -62,5 +62,12 @@ class AuthController extends Controller
         }
 
         return back()->with('success', __('ui.profile_saved'))->withCookie(cookie('pokeline_locale', $data['locale'], 60 * 24 * 365));
+    }
+
+    private function destination(Request $request): string
+    {
+        return $request->string('next')->value() === 'online'
+            ? route('battle.lobby')
+            : route('home');
     }
 }

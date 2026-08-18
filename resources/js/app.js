@@ -33,6 +33,8 @@ if (hub) {
     let direction = 'up';
     let frame = 0;
     let near = null;
+    const gameDialog = document.querySelector('#game-space-dialog');
+    const gameFrame = document.querySelector('#game-space-frame');
     const pressedDirections = [];
     const directionForKey = {
         arrowleft: 'left', a: 'left', q: 'left',
@@ -52,6 +54,10 @@ if (hub) {
     });
 
     const displayName = key => document.querySelector(`[data-destination="${key}"]`)?.textContent.replace(/^\s*\d+/, '').trim() || key;
+    const openGame = key => {
+        gameFrame.src = destinations[key].url;
+        gameDialog.showModal();
+    };
     const update = () => {
         character.style.left = `${position.x}%`;
         character.style.top = `${position.y}%`;
@@ -91,7 +97,7 @@ if (hub) {
             if (existing !== -1) pressedDirections.splice(existing, 1);
             pressedDirections.push(inputDirection);
         }
-        if ((key === 'enter' || key === 'e') && near) { event.preventDefault(); window.location.href = destinations[near].url; }
+        if ((key === 'enter' || key === 'e') && near) { event.preventDefault(); openGame(near); }
     });
     window.addEventListener('keyup', event => {
         const released = directionForKey[event.key.toLowerCase()];
@@ -100,9 +106,21 @@ if (hub) {
         if (index !== -1) pressedDirections.splice(index, 1);
     });
     window.addEventListener('blur', () => pressedDirections.splice(0));
-    document.querySelectorAll('[data-destination]').forEach(marker => marker.addEventListener('click', () => window.location.href = destinations[marker.dataset.destination].url));
+    document.querySelectorAll('[data-destination]').forEach(marker => marker.addEventListener('click', () => openGame(marker.dataset.destination)));
+    document.querySelector('[data-game-close]').addEventListener('click', () => gameDialog.close());
+    gameDialog.addEventListener('close', () => { gameFrame.src = 'about:blank'; hub.focus(); });
+    window.addEventListener('message', event => { if (event.origin === window.location.origin && event.data === 'pokeline:close-game') gameDialog.close(); });
     hub.addEventListener('click', () => hub.focus());
     update(); walk(); hub.focus();
+}
+
+if (window.self !== window.top) {
+    document.querySelectorAll('a').forEach(link => {
+        if (link.href === `${window.location.origin}/`) link.addEventListener('click', event => {
+            event.preventDefault();
+            window.parent.postMessage('pokeline:close-game', window.location.origin);
+        });
+    });
 }
 
 const pokedexDialog = document.querySelector('#pokedex-dialog');
@@ -138,6 +156,8 @@ document.querySelectorAll('[data-pokedex-browser]').forEach(browser => {
         pokedexTarget.dispatchEvent(new Event('change', {bubbles: true}));
     };
     const load = async requestedPage => {
+        browser.classList.add('is-loading');
+        grid.setAttribute('aria-busy', 'true');
         grid.innerHTML = '<div class="pokedex-loading">…</div>';
         const url = new URL(browser.dataset.catalogUrl, window.location.origin);
         url.searchParams.set('page', requestedPage);
@@ -151,10 +171,17 @@ document.querySelectorAll('[data-pokedex-browser]').forEach(browser => {
             pageLabel.textContent = `${page} / ${lastPage}`;
             previous.disabled = page <= 1;
             next.disabled = page >= lastPage;
-            grid.innerHTML = payload.data.map(pokemon => `<button type="button" class="pokedex-card" data-pokemon="${escapeHtml(pokemon.name)}"><span>#${String(pokemon.id).padStart(4, '0')}</span><img src="${escapeHtml(pokemon.sprite)}" alt="" loading="lazy"><strong>${escapeHtml(pokemon.label)}</strong></button>`).join('') || '<div class="pokedex-loading">—</div>';
-            grid.querySelectorAll('[data-pokemon]').forEach(card => card.addEventListener('click', () => selectPokemon(card.dataset.pokemon)));
+            grid.innerHTML = payload.data.map((pokemon, index) => `<button type="button" class="pokedex-card" data-pokemon="${escapeHtml(pokemon.name)}" style="animation-delay:${Math.min(index * 18, 220)}ms"><span>#${String(pokemon.id).padStart(4, '0')}</span><img src="${escapeHtml(pokemon.sprite)}" alt="" loading="lazy"><strong>${escapeHtml(pokemon.label)}</strong></button>`).join('') || '<div class="pokedex-loading">—</div>';
+            grid.scrollTop = 0;
+            grid.querySelectorAll('[data-pokemon]').forEach(card => card.addEventListener('click', () => {
+                card.classList.add('is-selected');
+                selectPokemon(card.dataset.pokemon);
+            }));
         } catch (error) {
             grid.innerHTML = `<div class="pokedex-loading">${escapeHtml(error.message)}</div>`;
+        } finally {
+            browser.classList.remove('is-loading');
+            grid.removeAttribute('aria-busy');
         }
     };
     submit.addEventListener('click', () => load(1));
@@ -174,7 +201,11 @@ document.querySelectorAll('[data-team-input]').forEach(input => {
     const renderPreview = async () => {
         const names = input.value.split(',').map(value => value.trim().toLowerCase()).filter(Boolean).slice(0, 6);
         if (!names.length) {
-            preview.innerHTML = Array.from({length: 6}, (_, index) => `<div class="team-preview-slot empty"><span>${index + 1}</span><b>?</b></div>`).join('');
+            preview.innerHTML = Array.from({length: 6}, (_, index) => `<div class="team-preview-slot empty"><span class="party-index">${index + 1}</span><i class="party-ball" aria-hidden="true"></i><div class="party-data"><div class="party-name"><b>—</b><em>Lv.—</em></div><div class="party-hp"><strong>PV</strong><i><span style="width:0"></span></i></div><div class="party-meta"><small>— / —</small><small>—</small></div></div></div>`).join('');
+            itemSelects.forEach((select, index) => {
+                const label = select.closest('label')?.querySelector('[data-item-slot-label]');
+                if (label) label.textContent = `#${index + 1} —`;
+            });
             return;
         }
         preview.innerHTML = names.map((name, index) => `<div class="team-preview-slot loading"><span>${index + 1}</span><b>${escapePreview(name)}</b></div>`).join('');
@@ -185,7 +216,7 @@ document.querySelectorAll('[data-team-input]').forEach(input => {
             } catch { return null; }
         }));
         preview.innerHTML = pokemon.map((entry, index) => entry
-            ? `<div class="team-preview-slot" data-party-slot="${index}"><button type="button" class="party-remove" data-remove-pokemon="${index}" aria-label="×">×</button><span class="party-index">${index + 1}</span><i class="party-ball" aria-hidden="true"></i><img src="${escapePreview(entry.sprites.front)}" alt=""><div class="party-data"><div class="party-name"><b>${escapePreview(entry.label)}</b><em>Lv.100</em></div><div class="party-hp"><strong>PV</strong><i><span style="width:100%"></span></i></div><div class="party-meta"><small>100%</small><small>${entry.types.map(type => escapePreview(translatedType(type))).join(' / ')}</small></div><div class="party-item" data-party-item>${escapePreview(itemSelects[index]?.selectedOptions[0]?.textContent.split(' — ')[0] || '—')}</div></div></div>`
+            ? `<div class="team-preview-slot" data-party-slot="${index}"><button type="button" class="party-remove" data-remove-pokemon="${index}" aria-label="×">×</button><span class="party-index">${index + 1}</span><i class="party-ball" aria-hidden="true"></i><img src="${escapePreview(entry.sprites.front)}" alt=""><div class="party-data"><div class="party-name"><b>${escapePreview(entry.label)}</b><em>Lv.100</em></div><div class="party-hp"><strong>PV</strong><i><span style="width:100%"></span></i></div><div class="party-meta"><small>${entry.stats.hp} / ${entry.stats.hp}</small><small>${entry.types.map(type => escapePreview(translatedType(type))).join(' / ')}</small></div><div class="party-item" data-party-item>${escapePreview(itemSelects[index]?.selectedOptions[0]?.textContent.split(' — ')[0] || '—')}</div></div></div>`
             : `<div class="team-preview-slot invalid"><span>${index + 1}</span><b>${escapePreview(names[index])}</b><small>?</small></div>`).join('');
         itemSelects.forEach((select, index) => {
             const label = select.closest('label')?.querySelector('[data-item-slot-label]');
@@ -210,6 +241,55 @@ document.querySelectorAll('[data-team-input]').forEach(input => {
     renderPreview();
 });
 
+document.querySelectorAll('[data-local-team-library]').forEach(library => {
+    const storageKey = 'pokeline_local_teams_v1';
+    const list = library.querySelector('[data-local-team-list]');
+    const count = library.querySelector('[data-local-team-count]');
+    const nameInput = library.querySelector('[data-local-team-name]');
+    const targetIds = [...library.querySelectorAll('[data-save-local-team]')].map(button => button.dataset.saveLocalTeam);
+    const readTeams = () => {
+        try { return JSON.parse(localStorage.getItem(storageKey) || '[]').slice(0, 10); }
+        catch { return []; }
+    };
+    const writeTeams = teams => localStorage.setItem(storageKey, JSON.stringify(teams.slice(0, 10)));
+    const safe = value => String(value ?? '').replace(/[&<>'"]/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[character]));
+    const loadTeam = (team, targetId) => {
+        const target = document.getElementById(targetId);
+        target.value = team.pokemon.join(', ');
+        const selects = [...document.querySelectorAll(`[data-item-select="${targetId}"]`)];
+        selects.forEach((select, index) => { select.value = team.items[index] || ''; });
+        target.dispatchEvent(new Event('change', {bubbles: true}));
+    };
+    const renderLibrary = () => {
+        const teams = readTeams();
+        count.textContent = `${teams.length} / 10`;
+        list.innerHTML = teams.map((team, index) => `<article class="local-team-card" data-local-team-id="${safe(team.id)}"><div class="local-team-number">${String(index + 1).padStart(2, '0')}</div><div><strong>${safe(team.name)}</strong><div class="local-team-icons">${team.pokemon.map((pokemon, slot) => `<span title="${safe(pokemon)}">${team.sprites?.[slot]?`<img src="${safe(team.sprites[slot])}" alt="">`:'●'}</span>`).join('')}</div><small>${team.pokemon.length}/6</small></div><div class="local-team-buttons">${targetIds.map((targetId, player) => `<button type="button" data-load-local="${safe(team.id)}" data-load-target="${safe(targetId)}">${safe(library.dataset.load)} J${player + 1}</button>`).join('')}<button type="button" class="delete" data-delete-local="${safe(team.id)}">×</button></div></article>`).join('') || '<div class="local-library-empty">—</div>';
+        list.querySelectorAll('[data-load-local]').forEach(button => button.addEventListener('click', () => {
+            const team = readTeams().find(entry => String(entry.id) === button.dataset.loadLocal);
+            if (team) loadTeam(team, button.dataset.loadTarget);
+        }));
+        list.querySelectorAll('[data-delete-local]').forEach(button => button.addEventListener('click', () => {
+            writeTeams(readTeams().filter(team => String(team.id) !== button.dataset.deleteLocal));
+            renderLibrary();
+        }));
+    };
+    library.querySelectorAll('[data-save-local-team]').forEach(button => button.addEventListener('click', () => {
+        const teams = readTeams();
+        if (teams.length >= 10) { window.alert(library.dataset.limit); return; }
+        const targetId = button.dataset.saveLocalTeam;
+        const target = document.getElementById(targetId);
+        const pokemon = target.value.split(',').map(value => value.trim()).filter(Boolean).slice(0, 6);
+        if (!pokemon.length) { window.alert(library.dataset.empty); return; }
+        const itemSelects = [...document.querySelectorAll(`[data-item-select="${targetId}"]`)];
+        const sprites = [...document.querySelectorAll(`[data-team-preview="${targetId}"] [data-party-slot] img`)].map(image => image.src);
+        teams.push({id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, name: nameInput.value.trim() || `TEAM ${String(teams.length + 1).padStart(2, '0')}`, pokemon, items: itemSelects.map(select => select.value), sprites});
+        writeTeams(teams);
+        nameInput.value = '';
+        renderLibrary();
+    }));
+    renderLibrary();
+});
+
 const battleApp = document.querySelector('#battle-app');
 if (battleApp) {
     const config = {kind:battleApp.dataset.kind,mode:battleApp.dataset.mode,stateUrl:battleApp.dataset.stateUrl,actionUrl:battleApp.dataset.actionUrl,text:JSON.parse(battleApp.dataset.translations)};
@@ -223,7 +303,7 @@ if (battleApp) {
     const hpPercent=pokemon=>Math.max(0,Math.round(pokemon.current_hp/pokemon.max_hp*100));
     const escape=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[char]));
     const typeLabel=type=>config.text.types?.[type]||type;
-    const hud=pokemon=>{const percent=hpPercent(pokemon),status=pokemon.status?`<b class="status-badge status-${escape(pokemon.status)}">${escape(pokemon.status)}</b>`:'';return `<div class="hud-name"><span>${escape(pokemon.label)} ${status}</span><span>Lv.100</span></div><div class="type-tags">${pokemon.types.map(type=>`<span class="type-${escape(type)}">${escape(typeLabel(type))}</span>`).join('')}${pokemon.ability?`<span>${escape(pokemon.ability)}</span>`:''}</div><div class="hp-line"><b>PV</b><div class="hp-track"><div class="hp-fill ${percent<25?'low':''}" style="width:${percent}%"></div></div></div><div class="hp-numbers">${pokemon.current_hp} / ${pokemon.max_hp}</div>`};
+    const hud=pokemon=>{const percent=hpPercent(pokemon),status=pokemon.status?`<b class="status-badge status-${escape(pokemon.status)}">${escape(pokemon.status)}</b>`:'';return `<div class="hud-name"><span>${escape(pokemon.label)} ${status}</span><span>Lv.100</span></div><div class="type-tags">${pokemon.types.map(type=>`<span class="type-${escape(type)}">${escape(typeLabel(type))}</span>`).join('')}${pokemon.ability?`<span>${escape(pokemon.ability)}</span>`:''}</div><div class="hp-line"><b>${escape(config.text.hp)}</b><div class="hp-track"><div class="hp-fill ${percent<25?'low':''}" style="width:${percent}%"></div></div></div><div class="hp-numbers">${pokemon.current_hp} / ${pokemon.max_hp}</div>`};
     const moveMarkup=(pokemon,disabled)=>pokemon.moves.map((move,index)=>`<button class="move-button type-${escape(move.type)}" data-move="${index}" ${(disabled||(move.current_pp??move.pp??1)<=0)?'disabled':''}><span>${escape(move.label)}</span><small>${escape(typeLabel(move.type))} · ${move.power||'—'} PUI · ${move.current_pp??move.pp??'?'} PP</small></button>`).join('');
     const switchMarkup=(state,key,disabled)=>`<div class="switch-strip"><strong>${escape(config.text.switch)}</strong>${state.players[key].roster.map((pokemon,index)=>`<button type="button" data-switch="${index}" ${(disabled||index===state.players[key].active||pokemon.current_hp<=0)?'disabled':''} title="${escape(pokemon.label)}"><img src="${escape(pokemon.sprites.front)}" alt=""><span>${escape(pokemon.label)}<small>${pokemon.current_hp}/${pokemon.max_hp}</small></span></button>`).join('')}</div>`;
     const controlsMarkup=(state,key,disabled)=>moveMarkup(active(state,key),disabled)+switchMarkup(state,key,disabled);

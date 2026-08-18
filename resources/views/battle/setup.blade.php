@@ -13,7 +13,7 @@
         <section class="player-loadout player-one">
             <div class="player-banner"><span>P1</span><strong>{{ __('ui.first_player') }}</strong></div>
             <div class="team-preview" data-team-preview="setup-team-1"></div>
-            <input type="hidden" id="setup-team-1" data-team-input name="team1" value="{{ old('team1', 'pikachu, charizard, blastoise') }}">
+            <input type="hidden" id="setup-team-1" data-team-input name="team1" value="{{ old('team1', '') }}">
             <div class="party-actions"><button type="button" class="pokedex-picker-button party-add-button" data-pokedex-target="setup-team-1" data-pokedex-mode="append"><span>＋</span> {{ __('ui.add_pokemon') }}</button><small>{{ __('ui.party_picker_help') }}</small></div>
             <div class="arcade-items"><strong>{{ __('ui.sandbox_items') }}</strong><small>{{ __('ui.sandbox_items_select_help') }}</small>
                 <div class="item-select-grid">
@@ -29,7 +29,7 @@
         <section class="player-loadout player-two">
             <div class="player-banner"><span>P2</span><strong>{{ __('ui.second_player') }}</strong></div>
             <div class="team-preview" data-team-preview="setup-team-2"></div>
-            <input type="hidden" id="setup-team-2" data-team-input name="team2" value="{{ old('team2', 'venusaur, gengar, dragonite') }}">
+            <input type="hidden" id="setup-team-2" data-team-input name="team2" value="{{ old('team2', '') }}">
             <div class="party-actions"><button type="button" class="pokedex-picker-button party-add-button" data-pokedex-target="setup-team-2" data-pokedex-mode="append"><span>＋</span> {{ __('ui.add_pokemon') }}</button><small>{{ __('ui.party_picker_help') }}</small></div>
             <div class="arcade-items"><strong>{{ __('ui.sandbox_items') }}</strong><small>{{ __('ui.sandbox_items_select_help') }}</small>
                 <div class="item-select-grid">
@@ -40,6 +40,20 @@
             </div>
         </section>
         @endif
+
+        <section class="local-team-library" data-local-team-library
+                 data-empty="{{ __('ui.local_team_empty') }}"
+                 data-limit="{{ __('ui.local_team_limit') }}"
+                 data-load="{{ __('ui.load') }}"
+                 data-delete="{{ __('ui.delete') }}">
+            <div class="local-library-head"><div><p class="eyebrow">LOCAL BOX // 10 SLOTS</p><h2>{{ __('ui.local_teams') }}</h2><p>{{ __('ui.local_teams_help') }}</p></div><span data-local-team-count>0 / 10</span></div>
+            <div class="local-save-controls">
+                <label>{{ __('ui.team_name') }}<input type="text" data-local-team-name maxlength="40" placeholder="{{ __('ui.local_team_name_placeholder') }}"></label>
+                <button type="button" data-save-local-team="setup-team-1">{{ __('ui.save_player_team', ['player' => '1']) }}</button>
+                @if($mode === 'local')<button type="button" data-save-local-team="setup-team-2">{{ __('ui.save_player_team', ['player' => '2']) }}</button>@endif
+            </div>
+            <div class="local-team-list" data-local-team-list></div>
+        </section>
 
         <div class="arcade-start"><button class="pixel-button" type="submit"><span>▶</span> {{ __('ui.start_battle') }}</button><small>{{ __('ui.ready_hint') }}</small></div>
     </form>

@@ -9,10 +9,11 @@
             'defeat' => __('ui.defeat'), 'sound' => __('ui.sound'), 'rewards' => __('ui.rewards'),
             'switch' => __('ui.switch_pokemon'), 'weather' => __('ui.weather'),
             'types' => __('types'),
+            'hp' => __('ui.hp'),
         ];
     @endphp
     @if($kind === 'online' && $battle->status === 'waiting')
-        <div class="waiting-card screen-panel"><div class="signal-loader"><i></i><i></i><i></i></div><p>{{ __('ui.waiting') }}</p><strong class="room-code">{{ $battle->code }}</strong><small>{{ __('ui.share_code') }}</small></div>
+        <div class="waiting-card screen-panel"><div class="signal-loader"><i></i><i></i><i></i></div><p>{{ $battle->mode === 'online-private' ? __('ui.waiting_invited_player') : __('ui.searching_opponent') }}</p>@if($battle->mode === 'online-private')<strong class="room-code">{{ $battle->code }}</strong><small>{{ __('ui.share_code') }}</small>@else<div class="radar-animation large"><i></i></div><small>{{ __('ui.public_search_active') }}</small>@endif</div>
     @endif
     <div id="battle-app" class="battle-app arena-{{ $mode }} {{ $kind === 'online' && $battle->status === 'waiting' ? 'is-waiting' : '' }}"
          data-kind="{{ $kind }}"

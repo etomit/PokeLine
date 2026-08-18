@@ -37,6 +37,56 @@ class OnlineBattleTest extends TestCase
         $this->assertBetween(0, 2, $guest->inventory()->sum('quantity'));
     }
 
+    public function test_public_search_matches_two_available_players_automatically(): void
+    {
+        $host = User::factory()->create(['name' => 'Dawn']);
+        $guest = User::factory()->create(['name' => 'Lucas']);
+        $hostTeam = $this->team($host, 'Torterra', 120, 90);
+        $guestTeam = $this->team($guest, 'Infernape', 140, 90);
+
+        $this->actingAs($host)->post('/online/create', [
+            'team_id' => $hostTeam->id,
+            'queue_type' => 'public',
+        ])->assertRedirect();
+
+        $battle = Battle::firstOrFail();
+        $this->assertSame('waiting', $battle->status);
+        $this->assertSame('online-public', $battle->mode);
+
+        $this->actingAs($guest)->post('/online/create', [
+            'team_id' => $guestTeam->id,
+            'queue_type' => 'public',
+        ])->assertRedirect("/online/{$battle->public_id}");
+
+        $battle->refresh();
+        $this->assertSame('active', $battle->status);
+        $this->assertSame($guest->id, $battle->guest_id);
+        $this->assertDatabaseCount('battles', 1);
+    }
+
+    public function test_invitation_code_only_joins_a_private_room(): void
+    {
+        $host = User::factory()->create(['name' => 'Barry']);
+        $guest = User::factory()->create(['name' => 'Dawn']);
+        $hostTeam = $this->team($host, 'Empoleon', 110, 90);
+        $guestTeam = $this->team($guest, 'Roserade', 130, 90);
+
+        $this->actingAs($host)->post('/online/create', [
+            'team_id' => $hostTeam->id,
+            'queue_type' => 'private',
+        ])->assertRedirect();
+
+        $battle = Battle::firstOrFail();
+        $this->assertSame('online-private', $battle->mode);
+
+        $this->actingAs($guest)->post('/online/join', [
+            'team_id' => $guestTeam->id,
+            'code' => $battle->code,
+        ])->assertRedirect("/online/{$battle->public_id}");
+
+        $this->assertSame('active', $battle->fresh()->status);
+    }
+
     private function team(User $user, string $name, int $speed, int $power): Team
     {
         $team = $user->teams()->create(compact('name'));

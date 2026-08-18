@@ -27,4 +27,14 @@ class AuthenticationAndLocaleTest extends TestCase
             ->assertRedirect('/')
             ->assertCookie('pokeline_locale', 'en');
     }
+
+    public function test_registration_can_return_the_player_to_the_online_lobby(): void
+    {
+        $this->post('/register', [
+            'name' => 'Leaf', 'email' => 'leaf@example.test', 'password' => 'password',
+            'password_confirmation' => 'password', 'locale' => 'fr', 'next' => 'online',
+        ])->assertRedirect('/online');
+
+        $this->assertAuthenticated();
+    }
 }

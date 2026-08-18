@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Battle;
 use App\Models\InventoryItem;
 use App\Models\Item;
+use App\Models\Team;
+use App\Models\User;
 use App\Services\BattleEngine;
 use App\Services\PokeApiService;
 use Illuminate\Http\JsonResponse;
@@ -235,7 +237,7 @@ class BattleController extends Controller
         return $rewards;
     }
 
-    private function connectGuest(Battle $battle, $team, $guest, BattleEngine $engine): void
+    private function connectGuest(Battle $battle, Team $team, User $guest, BattleEngine $engine): void
     {
         $battle->load(['hostTeam.pokemon.heldItem', 'host']);
         $state = $engine->createState(
