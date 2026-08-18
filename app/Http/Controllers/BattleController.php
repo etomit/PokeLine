@@ -274,7 +274,7 @@ class BattleController extends Controller
 
     private function parseTeam(string $value): array
     {
-        $ids = collect(explode(',', $value))->map(fn ($id) => strtolower(trim($id)))->filter()->unique()->values()->all();
+        $ids = collect(explode(',', $value))->map(fn ($id) => strtolower(trim($id)))->filter()->values()->all();
         if (count($ids) < 1 || count($ids) > 6) {
             throw ValidationException::withMessages(['team1' => __('ui.team_size')]);
         }

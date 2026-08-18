@@ -147,7 +147,7 @@ document.querySelectorAll('[data-pokedex-browser]').forEach(browser => {
         if (!pokedexTarget) return;
         if (pokedexMode === 'append') {
             const selected = pokedexTarget.value.split(',').map(value => value.trim()).filter(Boolean);
-            if (!selected.includes(name) && selected.length < 6) selected.push(name);
+            if (selected.length < 6) selected.push(name);
             pokedexTarget.value = selected.join(', ');
         } else {
             pokedexTarget.value = name;
@@ -191,46 +191,111 @@ document.querySelectorAll('[data-pokedex-browser]').forEach(browser => {
     load(1);
 });
 
+const pokemonPreviewCache = new Map();
 document.querySelectorAll('[data-team-input]').forEach(input => {
     const preview = document.querySelector(`[data-team-preview="${input.id}"]`);
     const itemSelects = [...document.querySelectorAll(`[data-item-select="${input.id}"]`)];
+    const itemsPanel = input.closest('.player-loadout').querySelector('.arcade-items');
     const typeLabels = JSON.parse(input.closest('[data-type-labels]')?.dataset.typeLabels || '{}');
     const translatedType = type => typeLabels[type] || type;
     let previewTimer;
+    let renderVersion = 0;
     const escapePreview = value => String(value ?? '').replace(/[&<>'"]/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[character]));
-    const renderPreview = async () => {
-        const names = input.value.split(',').map(value => value.trim().toLowerCase()).filter(Boolean).slice(0, 6);
-        if (!names.length) {
-            preview.innerHTML = Array.from({length: 6}, (_, index) => `<div class="team-preview-slot empty"><span class="party-index">${index + 1}</span><i class="party-ball" aria-hidden="true"></i><div class="party-data"><div class="party-name"><b>—</b><em>Lv.—</em></div><div class="party-hp"><strong>PV</strong><i><span style="width:0"></span></i></div><div class="party-meta"><small>— / —</small><small>—</small></div></div></div>`).join('');
-            itemSelects.forEach((select, index) => {
-                const label = select.closest('label')?.querySelector('[data-item-slot-label]');
-                if (label) label.textContent = `#${index + 1} —`;
+    const emptyMarkup = index => `<span class="party-index">${index + 1}</span><i class="party-ball" aria-hidden="true"></i><div class="party-data"><div class="party-name"><b>—</b><em>Lv.—</em></div><div class="party-hp"><strong>PV</strong><i><span style="width:0"></span></i></div><div class="party-meta"><small>— / —</small><small>—</small></div></div>`;
+    const loadingMarkup = (index, name) => `<span class="party-index">${index + 1}</span><i class="party-ball" aria-hidden="true"></i><div class="party-data"><div class="party-name"><b>${escapePreview(name)}</b><em>…</em></div><div class="party-hp"><strong>PV</strong><i><span style="width:35%"></span></i></div></div>`;
+    const occupiedMarkup = (entry, index) => `<button type="button" class="party-remove" data-remove-pokemon="${index}" aria-label="×">×</button><span class="party-index">${index + 1}</span><i class="party-ball" aria-hidden="true"></i><img src="${escapePreview(entry.sprites.front)}" alt=""><div class="party-data"><div class="party-name"><b>${escapePreview(entry.label)}</b><em>Lv.100</em></div><div class="party-hp"><strong>PV</strong><i><span style="width:100%"></span></i></div><div class="party-meta"><small>${entry.stats.hp} / ${entry.stats.hp}</small><small>${entry.types.map(type => escapePreview(translatedType(type))).join(' / ')}</small></div><div class="party-item" data-party-item>${escapePreview(itemSelects[index]?.selectedOptions[0]?.textContent.split(' — ')[0] || '—')}</div></div>`;
+    const slots = Array.from({length: 6}, (_, index) => {
+        const slot = document.createElement('div');
+        slot.className = 'team-preview-slot empty';
+        slot.dataset.previewSlot = index;
+        slot.dataset.state = 'empty';
+        slot.innerHTML = emptyMarkup(index);
+        preview.append(slot);
+        return slot;
+    });
+    const pokemon = async name => {
+        const cached = pokemonPreviewCache.get(name);
+        if (cached) return cached instanceof Promise ? cached : Promise.resolve(cached);
+        const pending = fetch(`/api/pokemon/${encodeURIComponent(name)}`, {headers: {Accept: 'application/json'}})
+            .then(response => response.ok ? response.json() : null)
+            .catch(() => null)
+            .then(entry => {
+                pokemonPreviewCache.set(name, entry);
+                return entry;
             });
-            return;
-        }
-        preview.innerHTML = names.map((name, index) => `<div class="team-preview-slot loading"><span>${index + 1}</span><b>${escapePreview(name)}</b></div>`).join('');
-        const pokemon = await Promise.all(names.map(async name => {
-            try {
-                const response = await fetch(`/api/pokemon/${encodeURIComponent(name)}`, {headers: {Accept: 'application/json'}});
-                return response.ok ? response.json() : null;
-            } catch { return null; }
-        }));
-        preview.innerHTML = pokemon.map((entry, index) => entry
-            ? `<div class="team-preview-slot" data-party-slot="${index}"><button type="button" class="party-remove" data-remove-pokemon="${index}" aria-label="×">×</button><span class="party-index">${index + 1}</span><i class="party-ball" aria-hidden="true"></i><img src="${escapePreview(entry.sprites.front)}" alt=""><div class="party-data"><div class="party-name"><b>${escapePreview(entry.label)}</b><em>Lv.100</em></div><div class="party-hp"><strong>PV</strong><i><span style="width:100%"></span></i></div><div class="party-meta"><small>${entry.stats.hp} / ${entry.stats.hp}</small><small>${entry.types.map(type => escapePreview(translatedType(type))).join(' / ')}</small></div><div class="party-item" data-party-item>${escapePreview(itemSelects[index]?.selectedOptions[0]?.textContent.split(' — ')[0] || '—')}</div></div></div>`
-            : `<div class="team-preview-slot invalid"><span>${index + 1}</span><b>${escapePreview(names[index])}</b><small>?</small></div>`).join('');
+        pokemonPreviewCache.set(name, pending);
+        return pending;
+    };
+    const removePokemon = removeIndex => {
+        const selected = input.value.split(',').map(value => value.trim()).filter(Boolean);
+        selected.splice(removeIndex, 1);
+        for (let index = removeIndex; index < itemSelects.length - 1; index++) itemSelects[index].value = itemSelects[index + 1].value;
+        if (itemSelects.length) itemSelects.at(-1).value = '';
+        input.value = selected.join(', ');
+        input.dispatchEvent(new Event('change', {bubbles: true}));
+    };
+    const showOccupied = (slot, entry, index, name) => {
+        slot.className = 'team-preview-slot';
+        slot.dataset.name = name;
+        slot.dataset.state = 'ready';
+        slot.dataset.partySlot = index;
+        slot.innerHTML = occupiedMarkup(entry, index);
+        slot.querySelector('[data-remove-pokemon]').addEventListener('click', () => removePokemon(index));
+    };
+    const syncItems = (names, entries = []) => {
+        itemsPanel.hidden = names.length === 0;
         itemSelects.forEach((select, index) => {
-            const label = select.closest('label')?.querySelector('[data-item-slot-label]');
-            if (label) label.textContent = `#${index + 1} ${pokemon[index]?.label || '—'}`;
+            const label = select.closest('label');
+            const visible = index < names.length;
+            label.hidden = !visible;
+            select.disabled = !visible;
+            if (!visible) select.value = '';
+            const title = label.querySelector('[data-item-slot-label]');
+            if (title) title.textContent = `#${index + 1} ${entries[index]?.label || (visible ? names[index] : '—')}`;
         });
-        preview.querySelectorAll('[data-remove-pokemon]').forEach(button => button.addEventListener('click', () => {
-            const removeIndex = Number(button.dataset.removePokemon);
-            const selected = input.value.split(',').map(value => value.trim()).filter(Boolean);
-            selected.splice(removeIndex, 1);
-            for (let index = removeIndex; index < itemSelects.length - 1; index++) itemSelects[index].value = itemSelects[index + 1].value;
-            if (itemSelects.length) itemSelects.at(-1).value = '';
-            input.value = selected.join(', ');
-            input.dispatchEvent(new Event('change', {bubbles: true}));
-        }));
+    };
+    const renderPreview = async () => {
+        const currentVersion = ++renderVersion;
+        const names = input.value.split(',').map(value => value.trim().toLowerCase()).filter(Boolean).slice(0, 6);
+        syncItems(names);
+        slots.forEach((slot, index) => {
+            const name = names[index];
+            if (!name) {
+                if (slot.dataset.state !== 'empty') {
+                    slot.className = 'team-preview-slot empty';
+                    slot.dataset.state = 'empty';
+                    delete slot.dataset.name;
+                    delete slot.dataset.partySlot;
+                    slot.innerHTML = emptyMarkup(index);
+                }
+                return;
+            }
+            const cached = pokemonPreviewCache.get(name);
+            if (cached && !(cached instanceof Promise)) {
+                if (slot.dataset.name !== name || slot.dataset.state !== 'ready') showOccupied(slot, cached, index, name);
+                return;
+            }
+            if (slot.dataset.name !== name || slot.dataset.state !== 'loading') {
+                slot.className = 'team-preview-slot loading';
+                slot.dataset.name = name;
+                slot.dataset.state = 'loading';
+                delete slot.dataset.partySlot;
+                slot.innerHTML = loadingMarkup(index, name);
+            }
+        });
+        const entries = await Promise.all(names.map(pokemon));
+        if (currentVersion !== renderVersion) return;
+        entries.forEach((entry, index) => {
+            const slot = slots[index];
+            if (entry) {
+                if (slot.dataset.name === names[index] && slot.dataset.state !== 'ready') showOccupied(slot, entry, index, names[index]);
+            } else {
+                slot.className = 'team-preview-slot invalid';
+                slot.dataset.state = 'invalid';
+                slot.innerHTML = `<span class="party-index">${index + 1}</span><div class="party-data"><b>${escapePreview(names[index])}</b><small>?</small></div>`;
+            }
+        });
+        syncItems(names, entries);
     };
     input.addEventListener('input', () => { clearTimeout(previewTimer); previewTimer = setTimeout(renderPreview, 350); });
     input.addEventListener('change', renderPreview);
@@ -262,6 +327,7 @@ document.querySelectorAll('[data-local-team-library]').forEach(library => {
     };
     const renderLibrary = () => {
         const teams = readTeams();
+        library.classList.toggle('is-empty', teams.length === 0);
         count.textContent = `${teams.length} / 10`;
         list.innerHTML = teams.map((team, index) => `<article class="local-team-card" data-local-team-id="${safe(team.id)}"><div class="local-team-number">${String(index + 1).padStart(2, '0')}</div><div><strong>${safe(team.name)}</strong><div class="local-team-icons">${team.pokemon.map((pokemon, slot) => `<span title="${safe(pokemon)}">${team.sprites?.[slot]?`<img src="${safe(team.sprites[slot])}" alt="">`:'●'}</span>`).join('')}</div><small>${team.pokemon.length}/6</small></div><div class="local-team-buttons">${targetIds.map((targetId, player) => `<button type="button" data-load-local="${safe(team.id)}" data-load-target="${safe(targetId)}">${safe(library.dataset.load)} J${player + 1}</button>`).join('')}<button type="button" class="delete" data-delete-local="${safe(team.id)}">×</button></div></article>`).join('') || '<div class="local-library-empty">—</div>';
         list.querySelectorAll('[data-load-local]').forEach(button => button.addEventListener('click', () => {

@@ -25,7 +25,7 @@ class TeamController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:40'],
             'pokemon' => ['required', 'array', 'min:1', 'max:6'],
-            'pokemon.*' => ['required', 'string', 'max:30', 'distinct:ignore_case'],
+            'pokemon.*' => ['required', 'string', 'max:30'],
             'items' => ['nullable', 'array', 'max:6'],
             'items.*' => ['nullable', 'exists:items,id'],
         ]);
