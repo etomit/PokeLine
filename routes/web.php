@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', [HomeController::class, 'index'])->name('home');
 Route::post('/language', [AuthController::class, 'locale'])->name('locale');
+Route::get('/pokedex', [PokemonController::class, 'index'])->name('pokedex');
+Route::get('/api/pokedex', [PokemonController::class, 'catalog'])->middleware('throttle:90,1')->name('pokedex.catalog');
 Route::get('/api/pokemon/{pokemon}', [PokemonController::class, 'show'])->where('pokemon', '[A-Za-z0-9-]+')->name('pokemon.show');
 
 Route::middleware('guest')->group(function () {

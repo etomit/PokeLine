@@ -1,0 +1,34 @@
+{
+    "_help": "Toutes les coordonnées sont des pourcentages de la carte. x1/y1 = coin supérieur gauche, x2/y2 = coin inférieur droit.",
+    "bounds": { "minX": 5, "maxX": 95, "minY": 8, "maxY": 92 },
+    "spawn": { "x": 50, "y": 88 },
+    "destinations": {
+        "solo": {
+            "access": { "x": 20, "y": 39 },
+            "marker": { "x": 20, "y": 27 }
+        },
+        "local": {
+            "access": { "x": 76, "y": 46 },
+            "marker": { "x": 76, "y": 35 }
+        },
+        "online": {
+            "access": { "x": 21, "y": 82 },
+            "marker": { "x": 21, "y": 70 }
+        }
+    },
+    "obstacles": [
+        { "id": "bordure-haute", "x1": 3, "x2": 97, "y1": 0, "y2": 9 },
+        { "id": "bordure-basse", "x1": 3, "x2": 97, "y1": 91, "y2": 100 },
+        { "id": "bordure-gauche", "x1": 0, "x2": 6, "y1": 0, "y2": 100 },
+        { "id": "bordure-droite", "x1": 94, "x2": 100, "y1": 0, "y2": 100 },
+        { "id": "batiment-solo", "x1": 8, "x2": 32, "y1": 8, "y2": 32 },
+        { "id": "batiment-local", "x1": 66, "x2": 88, "y1": 16, "y2": 40 },
+        { "id": "batiment-online", "x1": 10, "x2": 31, "y1": 58, "y2": 76 },
+        { "id": "banc-haut", "x1": 36, "x2": 42, "y1": 19, "y2": 26 },
+        { "id": "panneau", "x1": 54, "x2": 59, "y1": 30, "y2": 38 },
+        { "id": "lampadaire-gauche", "x1": 41, "x2": 45, "y1": 53, "y2": 71 },
+        { "id": "lampadaire-droit", "x1": 53, "x2": 57, "y1": 53, "y2": 71 },
+        { "id": "banc-bas", "x1": 66, "x2": 73, "y1": 64, "y2": 72 },
+        { "id": "mare", "x1": 75, "x2": 88, "y1": 64, "y2": 81 }
+    ]
+}

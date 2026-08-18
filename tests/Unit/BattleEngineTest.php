@@ -40,6 +40,44 @@ class BattleEngineTest extends TestCase
         }
     }
 
+    public function test_a_manual_switch_has_priority_and_changes_the_active_pokemon(): void
+    {
+        $engine = new BattleEngine(new TypeChart);
+        $reserve = $this->pokemon('Reserve', 'water', 'water', 20);
+        $state = $engine->createState(
+            [$this->pokemon('Lead', 'normal', 'normal', 20), $reserve],
+            [$this->pokemon('Enemy', 'normal', 'normal', 200)],
+        );
+
+        $state = $engine->resolveTurn($state, [
+            'p1' => ['action_type' => 'switch', 'pokemon_index' => 1],
+            'p2' => ['action_type' => 'move', 'move_index' => 0],
+        ]);
+
+        $this->assertSame(1, $state['players']['p1']['active']);
+        $this->assertLessThan($reserve['stats']['hp'], $state['players']['p1']['roster'][1]['current_hp']);
+        $this->assertContains('switch', array_column($state['last_events'], 'type'));
+    }
+
+    public function test_status_moves_apply_burn_and_end_turn_damage(): void
+    {
+        $engine = new BattleEngine(new TypeChart);
+        $burner = $this->pokemon('Burner', 'fire', 'fire', 200);
+        $burner['moves'][0] = [
+            'name' => 'will-o-wisp', 'label' => 'Will-O-Wisp', 'type' => 'fire', 'power' => 0,
+            'accuracy' => 100, 'priority' => 0, 'damage_class' => 'status', 'pp' => 15,
+            'ailment' => 'burn', 'ailment_chance' => 100, 'stat_changes' => [],
+        ];
+        $state = $engine->createState([$burner], [$this->pokemon('Target', 'normal', 'normal', 20)]);
+        $state = $engine->resolveTurn($state, [
+            'p1' => ['move_index' => 0], 'p2' => ['move_index' => 0],
+        ]);
+
+        $this->assertSame('burn', $state['players']['p2']['roster'][0]['status']);
+        $this->assertContains('status-damage', array_column($state['last_events'], 'type'));
+        $this->assertSame(14, $state['players']['p1']['roster'][0]['moves'][0]['current_pp']);
+    }
+
     private function pokemon(string $label, string $type, string $moveType, int $speed): array
     {
         return [

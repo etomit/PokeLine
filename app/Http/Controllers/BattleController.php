@@ -30,8 +30,10 @@ class BattleController extends Controller
         $data = $request->validate([
             'team1' => ['required', 'string', 'max:200'],
             'team2' => [$mode === 'local' ? 'required' : 'nullable', 'string', 'max:200'],
-            'items1' => ['nullable', 'string', 'max:200'],
-            'items2' => ['nullable', 'string', 'max:200'],
+            'items1' => ['nullable', 'array', 'max:6'],
+            'items1.*' => ['nullable', 'string', 'exists:items,slug'],
+            'items2' => ['nullable', 'array', 'max:6'],
+            'items2.*' => ['nullable', 'string', 'exists:items,slug'],
         ]);
         $firstIds = $this->parseTeam($data['team1']);
         $secondIds = $mode === 'solo'
@@ -39,8 +41,8 @@ class BattleController extends Controller
             : $this->parseTeam($data['team2']);
         $first = array_map(fn ($id) => $pokeApi->pokemon($id), $firstIds);
         $second = array_map(fn ($id) => $pokeApi->pokemon($id), $secondIds);
-        $first = $this->equipSandboxItems($first, $data['items1'] ?? '');
-        $second = $this->equipSandboxItems($second, $data['items2'] ?? '');
+        $first = $this->equipSandboxItems($first, $data['items1'] ?? []);
+        $second = $this->equipSandboxItems($second, $data['items2'] ?? []);
         $state = $engine->createState($first, $second, [$mode === 'solo' ? __('ui.battle_trainer') : __('ui.player_one'), $mode === 'solo' ? __('ui.ai_name') : __('ui.player_two')]);
         $request->session()->put('battle', ['mode' => $mode, 'state' => $state, 'pending' => null]);
 
@@ -51,7 +53,7 @@ class BattleController extends Controller
     {
         abort_unless($request->session()->has('battle'), 404);
 
-        return view('battle.arena', ['kind' => 'session', 'battle' => null]);
+        return view('battle.arena', ['kind' => 'session', 'mode' => $request->session()->get('battle.mode'), 'battle' => null]);
     }
 
     public function sessionState(Request $request): JsonResponse
@@ -63,13 +65,13 @@ class BattleController extends Controller
 
     public function sessionAction(Request $request, BattleEngine $engine): JsonResponse
     {
-        $data = $request->validate(['move_index' => ['required', 'integer', 'between:0,3']]);
+        $data = $this->validateAction($request);
         $battle = $request->session()->get('battle');
         abort_unless($battle && ($battle['state']['phase'] ?? null) === 'active', 409);
 
         if ($battle['mode'] === 'solo') {
             $aiMove = $engine->chooseAiMove($battle['state']);
-            $battle['state'] = $engine->resolveTurn($battle['state'], ['p1' => $data, 'p2' => ['move_index' => $aiMove]]);
+            $battle['state'] = $engine->resolveTurn($battle['state'], ['p1' => $data, 'p2' => ['action_type' => 'move', 'move_index' => $aiMove]]);
         } elseif ($battle['pending'] === null) {
             $battle['pending'] = $data;
             $battle['state']['last_events'] = [['type' => 'handoff', 'text' => __('ui.handoff')]];
@@ -86,25 +88,61 @@ class BattleController extends Controller
     {
         return view('battle.lobby', [
             'teams' => $request->user()->teams()->with('pokemon')->get(),
-            'battles' => Battle::with('host')->where('status', 'waiting')->where('host_id', '!=', $request->user()->id)->latest()->get(),
+            'battles' => Battle::with(['host', 'hostTeam.pokemon'])
+                ->where('status', 'waiting')
+                ->where('mode', 'online-public')
+                ->where('host_id', '!=', $request->user()->id)
+                ->oldest()
+                ->get(),
         ]);
     }
 
-    public function createOnline(Request $request)
+    public function createOnline(Request $request, BattleEngine $engine)
     {
-        $data = $request->validate(['team_id' => ['required', 'exists:teams,id']]);
+        $data = $request->validate([
+            'team_id' => ['required', 'exists:teams,id'],
+            'queue_type' => ['nullable', 'in:public,private'],
+        ]);
         $team = $request->user()->teams()->findOrFail($data['team_id']);
         abort_if($team->pokemon()->count() === 0, 422);
-        $battle = Battle::create([
-            'public_id' => (string) Str::uuid(),
-            'code' => $this->uniqueCode(),
-            'host_id' => $request->user()->id,
-            'host_team_id' => $team->id,
-            'status' => 'waiting',
-            'mode' => 'online',
-        ]);
+        $queueType = $data['queue_type'] ?? 'public';
+
+        if ($queueType === 'public') {
+            $battle = DB::transaction(function () use ($request, $team, $engine) {
+                $waiting = Battle::where('status', 'waiting')
+                    ->where('mode', 'online-public')
+                    ->where('host_id', '!=', $request->user()->id)
+                    ->oldest()
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($waiting) {
+                    $this->connectGuest($waiting, $team, $request->user(), $engine);
+
+                    return $waiting;
+                }
+
+                return $this->createWaitingBattle($request->user()->id, $team->id, 'online-public');
+            });
+
+            return redirect()->route('battle.online.show', $battle);
+        }
+
+        $battle = $this->createWaitingBattle($request->user()->id, $team->id, 'online-private');
 
         return redirect()->route('battle.online.show', $battle);
+    }
+
+    private function createWaitingBattle(int $userId, int $teamId, string $mode): Battle
+    {
+        return Battle::create([
+            'public_id' => (string) Str::uuid(),
+            'code' => $this->uniqueCode(),
+            'host_id' => $userId,
+            'host_team_id' => $teamId,
+            'status' => 'waiting',
+            'mode' => $mode,
+        ]);
     }
 
     public function joinOnline(Request $request, BattleEngine $engine, ?Battle $battle = null)
@@ -114,20 +152,14 @@ class BattleController extends Controller
             'code' => [$battle ? 'nullable' : 'required', 'string', 'max:8'],
         ]);
         $team = $request->user()->teams()->findOrFail($data['team_id']);
-        $battle ??= Battle::where('code', strtoupper($data['code']))->firstOrFail();
+        $battle ??= Battle::where('code', strtoupper($data['code']))->where('mode', 'online-private')->firstOrFail();
 
         DB::transaction(function () use ($request, $team, $battle, $engine) {
             $locked = Battle::whereKey($battle->id)->lockForUpdate()->firstOrFail();
             if ($locked->status !== 'waiting' || $locked->host_id === $request->user()->id) {
                 throw ValidationException::withMessages(['code' => __('ui.room_unavailable')]);
             }
-            $locked->load(['hostTeam.pokemon.heldItem', 'guestTeam', 'host']);
-            $state = $engine->createState(
-                $engine->teamSnapshots($locked->hostTeam),
-                $engine->teamSnapshots($team->load('pokemon.heldItem')),
-                [$locked->host->name, $request->user()->name],
-            );
-            $locked->update(['guest_id' => $request->user()->id, 'guest_team_id' => $team->id, 'status' => 'active', 'state' => $state, 'pending_actions' => []]);
+            $this->connectGuest($locked, $team, $request->user(), $engine);
         });
 
         return redirect()->route('battle.online.show', $battle);
@@ -137,7 +169,7 @@ class BattleController extends Controller
     {
         $this->authorizeParticipant($request, $battle);
 
-        return view('battle.arena', ['kind' => 'online', 'battle' => $battle]);
+        return view('battle.arena', ['kind' => 'online', 'mode' => 'online', 'battle' => $battle]);
     }
 
     public function onlineState(Request $request, Battle $battle): JsonResponse
@@ -160,7 +192,7 @@ class BattleController extends Controller
     public function onlineAction(Request $request, Battle $battle, BattleEngine $engine): JsonResponse
     {
         $this->authorizeParticipant($request, $battle);
-        $data = $request->validate(['move_index' => ['required', 'integer', 'between:0,3']]);
+        $data = $this->validateAction($request);
 
         DB::transaction(function () use ($request, $battle, $data, $engine) {
             $locked = Battle::whereKey($battle->id)->lockForUpdate()->firstOrFail();
@@ -203,6 +235,41 @@ class BattleController extends Controller
         return $rewards;
     }
 
+    private function connectGuest(Battle $battle, $team, $guest, BattleEngine $engine): void
+    {
+        $battle->load(['hostTeam.pokemon.heldItem', 'host']);
+        $state = $engine->createState(
+            $engine->teamSnapshots($battle->hostTeam),
+            $engine->teamSnapshots($team->load('pokemon.heldItem')),
+            [$battle->host->name, $guest->name],
+        );
+        $battle->update([
+            'guest_id' => $guest->id,
+            'guest_team_id' => $team->id,
+            'status' => 'active',
+            'state' => $state,
+            'pending_actions' => [],
+        ]);
+    }
+
+    private function validateAction(Request $request): array
+    {
+        $data = $request->validate([
+            'action_type' => ['nullable', 'in:move,switch'],
+            'move_index' => ['nullable', 'integer', 'between:0,3'],
+            'pokemon_index' => ['nullable', 'integer', 'between:0,5'],
+        ]);
+        $data['action_type'] ??= isset($data['pokemon_index']) ? 'switch' : 'move';
+        if ($data['action_type'] === 'switch' && ! isset($data['pokemon_index'])) {
+            throw ValidationException::withMessages(['pokemon_index' => __('ui.switch_pokemon')]);
+        }
+        if ($data['action_type'] === 'move' && ! isset($data['move_index'])) {
+            throw ValidationException::withMessages(['move_index' => __('ui.choose_attack')]);
+        }
+
+        return $data;
+    }
+
     private function parseTeam(string $value): array
     {
         $ids = collect(explode(',', $value))->map(fn ($id) => strtolower(trim($id)))->filter()->unique()->values()->all();
@@ -213,9 +280,9 @@ class BattleController extends Controller
         return $ids;
     }
 
-    private function equipSandboxItems(array $team, string $value): array
+    private function equipSandboxItems(array $team, array $slugs): array
     {
-        $slugs = collect(explode(',', $value))->map(fn ($slug) => strtolower(trim($slug)))->values();
+        $slugs = collect($slugs)->map(fn ($slug) => strtolower(trim((string) $slug)))->values();
         $valid = Item::all()->mapWithKeys(fn (Item $item) => [$item->slug => $item->display_name]);
         foreach ($team as $index => &$pokemon) {
             $slug = $slugs->get($index);

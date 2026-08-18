@@ -14,12 +14,9 @@
             <span class="brand-dot"></span>{{ __('ui.title') }}
         </a>
         <nav>
-            <a href="{{ route('battle.setup', 'solo') }}">{{ __('ui.solo') }}</a>
-            <a href="{{ route('battle.setup', 'local') }}">{{ __('ui.local') }}</a>
-            @auth <a href="{{ route('battle.lobby') }}">{{ __('ui.online') }}</a> @endauth
+            <a href="{{ route('pokedex') }}">{{ __('ui.pokedex') }}</a>
         </nav>
         <div class="account-actions">
-            <button type="button" class="settings-button" id="settings-open">⚙ {{ __('ui.settings') }} <kbd>P</kbd></button>
             @guest
                 <a href="{{ route('login') }}">{{ __('ui.login') }}</a>
                 <a class="pixel-button small" href="{{ route('register') }}">{{ __('ui.register') }}</a>
@@ -39,6 +36,16 @@
             <button class="pixel-button" type="submit">{{ __('ui.save') }}</button>
         </form>
         <small>{{ __('ui.settings_hint') }}</small>
+    </dialog>
+    <dialog id="pokedex-dialog" class="pokedex-dialog">
+        <form method="dialog" class="dialog-close"><button aria-label="{{ __('ui.close') }}">×</button></form>
+        <p class="eyebrow">POKÉAPI // NATIONAL DATA</p>
+        <h2>{{ __('ui.choose_from_pokedex') }}</h2>
+        <div class="pokedex-device compact" data-pokedex-browser data-catalog-url="{{ route('pokedex.catalog') }}">
+            <div class="pokedex-toolbar"><input type="search" data-pokedex-search placeholder="{{ __('ui.search_pokemon') }}"><button type="button" class="pixel-button" data-pokedex-submit>{{ __('ui.search') }}</button></div>
+            <div class="pokedex-grid" data-pokedex-grid><div class="pokedex-loading">{{ __('ui.loading_pokedex') }}</div></div>
+            <div class="pokedex-pagination"><button type="button" data-pokedex-prev>◀</button><span data-pokedex-page>1 / 1</span><button type="button" data-pokedex-next>▶</button></div>
+        </div>
     </dialog>
     <main>
         @if(session('success')) <div class="flash success">{{ session('success') }}</div> @endif

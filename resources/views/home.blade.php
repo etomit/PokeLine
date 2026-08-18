@@ -1,24 +1,22 @@
 @extends('layouts.app')
 
 @section('content')
-<section class="hub-intro">
-    <div><p class="eyebrow">BATTLE TOWN // LV.100</p><h1>{{ __('ui.title') }}</h1><p>{{ __('ui.tagline') }}</p></div>
-    <div class="control-help"><span>↑ ↓ ← → / WASD / ZQSD</span><span>ENTER / E — {{ __('ui.enter') }}</span><span>P — {{ __('ui.settings') }}</span></div>
-</section>
-
+@php($hubCollisionConfig = json_decode(file_get_contents(public_path('data/hub-collisions.json')), true))
 <section id="world-hub" class="world-hub" tabindex="0" aria-label="{{ __('ui.map_label') }}"
          data-solo="{{ route('battle.setup', 'solo') }}"
          data-local="{{ route('battle.setup', 'local') }}"
-         data-online="{{ auth()->check() ? route('battle.lobby') : route('login') }}">
-    <img class="hub-map" src="{{ asset('images/hub-map.png') }}" alt="">
-    <button class="map-destination destination-solo" data-destination="solo"><span>01</span>{{ __('ui.solo') }}</button>
-    <button class="map-destination destination-local" data-destination="local"><span>02</span>{{ __('ui.local') }}</button>
-    <button class="map-destination destination-online" data-destination="online"><span>03</span>{{ __('ui.online') }}</button>
+         data-online="{{ auth()->check() ? route('battle.lobby') : route('login') }}"
+         data-collision-config='@json($hubCollisionConfig)'>
+    <img class="hub-map" src="{{ asset('images/hub-map-v2.png') }}" alt="">
+    <button type="button" class="map-settings-button" id="settings-open" aria-label="{{ __('ui.settings') }}" title="{{ __('ui.settings') }} (P)">
+        <img src="{{ asset('images/settings-icon.png') }}" alt=""><kbd>P</kbd>
+    </button>
+    <button class="map-destination destination-solo" data-destination="solo"><strong><span>01</span>{{ __('ui.solo') }}</strong></button>
+    <button class="map-destination destination-local" data-destination="local"><strong><span>02</span>{{ __('ui.local') }}</strong></button>
+    <button class="map-destination destination-online" data-destination="online"><strong><span>03</span>{{ __('ui.online') }}</strong></button>
     <div id="hub-character" class="hub-character face-up" role="img" aria-label="{{ __('ui.trainer') }}"></div>
     <div id="hub-prompt" class="hub-prompt" aria-live="polite">{{ __('ui.walk_hint') }}</div>
 </section>
-<p class="rule-note hub-rule">{{ __('ui.level_rule') }}</p>
-
 @auth
 <section class="dashboard-grid">
     <div class="screen-panel">
@@ -38,7 +36,7 @@
         <label>{{ __('ui.team_name') }}<input name="name" value="{{ old('name') }}" required maxlength="40"></label>
         <p class="form-help">{{ __('ui.pokemon_help') }}</p>
         @for($i = 0; $i < 6; $i++)
-            <div class="pokemon-slot"><span>#{{ $i + 1 }}</span><input name="pokemon[]" placeholder="{{ $i === 0 ? 'pikachu' : '—' }}" @required($i === 0)><select name="items[]"><option value="">{{ __('ui.no_item') }}</option>@foreach($inventory as $owned)<option value="{{ $owned->item_id }}">{{ $owned->item->display_name }} ×{{ $owned->quantity }}</option>@endforeach</select></div>
+            <div class="pokemon-slot"><span>#{{ $i + 1 }}</span><div class="picker-input"><input id="team-pokemon-{{ $i }}" name="pokemon[]" placeholder="{{ $i === 0 ? 'pikachu' : '—' }}" @required($i === 0)><button type="button" class="pokedex-picker-button" data-pokedex-target="team-pokemon-{{ $i }}" data-pokedex-mode="replace" title="{{ __('ui.choose_from_pokedex') }}">▣</button></div><select name="items[]"><option value="">{{ __('ui.no_item') }}</option>@foreach($inventory as $owned)<option value="{{ $owned->item_id }}">{{ $owned->item->display_name }} ×{{ $owned->quantity }}</option>@endforeach</select></div>
         @endfor
         <p class="form-help">{{ __('ui.items_help') }}</p>
         <button class="pixel-button" type="submit">{{ __('ui.save') }}</button>

@@ -26,6 +26,8 @@ class PokeApiServiceTest extends TestCase
         $this->assertSame((2 * 35) + 141, $pokemon['stats']['hp']);
         $this->assertSame((2 * 55) + 36, $pokemon['stats']['attack']);
         $this->assertSame('Tonnerre', $pokemon['moves'][0]['label']);
+        $this->assertSame('https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/25.png', $pokemon['sprites']['front']);
+        $this->assertSame('https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/back/25.png', $pokemon['sprites']['back']);
     }
 
     private function pokemonResponse(): array
