@@ -9,17 +9,30 @@
             <div class="arcade-lights" aria-hidden="true"><i></i><i></i><i></i></div>
         </header>
         <div class="online-workshop-grid">
-            <section class="online-team-storage">
-                <div class="section-heading"><h3>{{ __('ui.teams') }}</h3><strong>{{ $teams->count() }} / 10</strong></div>
-                <div class="team-list">
-                    @forelse($teams as $team)
-                        <article class="team-row">
-                            <div><strong>{{ $team->name }}</strong><div class="mini-roster">@foreach($team->pokemon as $pokemon)<span title="{{ data_get($pokemon->snapshot, 'label', $pokemon->pokemon_name) }}{{ $pokemon->heldItem ? ' · '.$pokemon->heldItem->display_name : '' }}"><img src="{{ data_get($pokemon->snapshot, 'sprites.front') }}" alt="{{ data_get($pokemon->snapshot, 'label', $pokemon->pokemon_name) }}"></span>@endforeach</div></div>
-                            <form action="{{ route('teams.destroy', $team) }}" method="post">@csrf @method('DELETE')<button class="danger-button" aria-label="{{ __('ui.delete') }}">×</button></form>
-                        </article>
-                    @empty <div class="online-team-empty"><span>＋</span><p>{{ __('ui.no_team') }}</p></div> @endforelse
-                </div>
-            </section>
+            <div class="online-team-sidebar">
+                <section class="online-team-storage">
+                    <div class="section-heading"><h3>{{ __('ui.teams') }}</h3><strong>{{ $teams->count() }} / 10</strong></div>
+                    <div class="team-list">
+                        @forelse($teams as $team)
+                            <article class="team-row">
+                                <div><strong>{{ $team->name }}</strong><div class="mini-roster">@foreach($team->pokemon as $pokemon)<span title="{{ data_get($pokemon->snapshot, 'label', $pokemon->pokemon_name) }}{{ $pokemon->heldItem ? ' · '.$pokemon->heldItem->display_name : '' }}"><img src="{{ data_get($pokemon->snapshot, 'sprites.front') }}" alt="{{ data_get($pokemon->snapshot, 'label', $pokemon->pokemon_name) }}"></span>@endforeach</div></div>
+                                <form action="{{ route('teams.destroy', $team) }}" method="post">@csrf @method('DELETE')<button class="danger-button" aria-label="{{ __('ui.delete') }}">×</button></form>
+                            </article>
+                        @empty <div class="online-team-empty"><span>＋</span><p>{{ __('ui.no_team') }}</p></div> @endforelse
+                    </div>
+                </section>
+
+                <section id="online-inventory" class="online-inventory-card">
+                    <div class="section-heading"><div><p class="eyebrow">ONLINE REWARDS</p><h3>{{ __('ui.inventory') }}</h3></div><strong>{{ $inventory->sum('quantity') }}</strong></div>
+                    <div class="online-inventory-list">
+                        @forelse($inventory as $owned)
+                            <article><strong>{{ $owned->item->display_name }} ×{{ $owned->quantity }}</strong><small>{{ $owned->item->display_description }}</small></article>
+                        @empty
+                            <p>{{ __('ui.inventory_empty') }}</p>
+                        @endforelse
+                    </div>
+                </section>
+            </div>
 
             <form class="player-loadout online-team-builder" action="{{ route('teams.store') }}" method="post" data-type-labels='@json(__('types'))'>
                 @csrf

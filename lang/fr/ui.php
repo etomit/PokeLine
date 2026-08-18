@@ -38,6 +38,8 @@ return [
     'turn' => 'Tour',
     'sound' => 'Son',
     'music' => 'Musique',
+    'music_volume' => 'Volume de la musique',
+    'effects_volume' => 'Volume des effets',
     'enabled' => 'activé',
     'disabled' => 'désactivé',
     'choose_attack' => 'Choisissez une attaque',

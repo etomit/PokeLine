@@ -7,6 +7,7 @@
             'turn' => __('ui.turn'), 'choose' => __('ui.choose_attack'),
             'waiting' => __('ui.waiting_opponent'), 'victory' => __('ui.victory'),
             'defeat' => __('ui.defeat'), 'sound' => __('ui.sound'), 'music' => __('ui.music'), 'rewards' => __('ui.rewards'),
+            'musicVolume' => __('ui.music_volume'), 'effectsVolume' => __('ui.effects_volume'),
             'switch' => __('ui.switch_pokemon'), 'weather' => __('ui.weather'),
             'types' => __('types'),
             'hp' => __('ui.hp'),
@@ -60,8 +61,14 @@
                 @if($kind === 'online' && $battle->status === 'active')
                     <form action="{{ route('battle.online.forfeit', $battle) }}" method="post">@csrf<button class="battle-forfeit" type="submit">{{ __('ui.forfeit') }}</button></form>
                 @endif
-                <button id="music-toggle" type="button">🎵 {{ __('ui.music') }}</button>
-                <button id="sound-toggle" type="button">🔊 {{ __('ui.sound') }}</button>
+                <div class="battle-volume-control">
+                    <button id="music-toggle" type="button">🎵 {{ __('ui.music') }}</button>
+                    <label title="{{ __('ui.music_volume') }}"><input id="battle-music-volume" type="range" min="0" max="100" step="5" aria-label="{{ __('ui.music_volume') }}"></label>
+                </div>
+                <div class="battle-volume-control">
+                    <button id="sound-toggle" type="button">🔊 {{ __('ui.sound') }}</button>
+                    <label title="{{ __('ui.effects_volume') }}"><input id="battle-sound-volume" type="range" min="0" max="100" step="5" aria-label="{{ __('ui.effects_volume') }}"></label>
+                </div>
             </div>
         </div>
         <div class="battle-screen">

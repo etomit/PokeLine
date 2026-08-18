@@ -17,10 +17,11 @@ RUN composer install \
 FROM php:8.3-cli-alpine
 
 RUN apk add --no-cache libcurl libxml2 \
-    && apk add --no-cache --virtual .php-build-deps $PHPIZE_DEPS curl-dev libxml2-dev \
-    && docker-php-ext-install -j"$(nproc)" pcntl curl dom \
+    && apk add --no-cache --virtual .php-build-deps $PHPIZE_DEPS linux-headers curl-dev libxml2-dev \
+    && docker-php-ext-configure pcntl --enable-pcntl \
+    && docker-php-ext-install -j"$(nproc)" pcntl posix sockets curl dom \
     && apk del .php-build-deps \
-    && php -r "extension_loaded('pcntl') || throw new RuntimeException('The pcntl extension is missing.');"
+    && php -r "extension_loaded('pcntl') || throw new RuntimeException('The pcntl extension is missing.'); defined('SIGINT') && defined('SIGTERM') && defined('SIGTSTP') || throw new RuntimeException('The PCNTL signal constants are missing.'); function_exists('pcntl_signal') || throw new RuntimeException('PCNTL signal handling is unavailable.');"
 
 WORKDIR /app
 

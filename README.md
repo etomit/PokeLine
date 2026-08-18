@@ -114,7 +114,7 @@ REVERB_ALLOWED_ORIGINS=${{PokeLine.RAILWAY_PUBLIC_DOMAIN}}
 ```
 
 `REVERB_ALLOWED_ORIGINS` contient uniquement le domaine, sans `https://` et sans barre oblique finale.
-Le service Reverb est construit avec `Dockerfile.reverb`, qui installe et vérifie automatiquement l'extension Unix `pcntl`. Il ne faut donc pas ajouter `RAILPACK_PHP_EXTENSIONS` à ce service.
+Le service Reverb est construit avec `Dockerfile.reverb`, qui compile `pcntl`, `posix` et `sockets`, puis vérifie les constantes de signaux Unix avant de produire l'image. Il ne faut donc pas ajouter `RAILPACK_PHP_EXTENSIONS` à ce service.
 
 ### 5. Déployer et vérifier
 

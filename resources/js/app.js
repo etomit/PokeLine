@@ -4,33 +4,45 @@ const settingsDialog = document.querySelector('#settings-dialog');
 const settingsButton = document.querySelector('#settings-open');
 const soundSetting = document.querySelector('#global-sound');
 const musicSetting = document.querySelector('#global-music');
+const soundVolumeSetting = document.querySelector('#global-sound-volume');
+const musicVolumeSetting = document.querySelector('#global-music-volume');
+const storedVolume = (key, fallback) => {
+    const value = Number(localStorage.getItem(key));
+    return Number.isFinite(value) && value >= 0 && value <= 1 ? value : fallback;
+};
 let soundEnabled = localStorage.getItem('pokeline_sound') !== 'off';
 let musicEnabled = localStorage.getItem('pokeline_music') !== 'off';
+let soundVolume = storedVolume('pokeline_sound_volume', .75);
+let musicVolume = storedVolume('pokeline_music_volume', .65);
 
-const pageMusicTheme = document.querySelector('#world-hub')
-    ? 'menu'
-    : document.querySelector('#battle-app') ? 'battle' : null;
+const pageMusicTheme = document.querySelector('#battle-app')
+    ? 'battle'
+    : document.querySelector('#world-hub, .arcade-setup, .online-center-room, .online-team-page, .pokedex-page') ? 'menu' : null;
 const musicThemes = {
     menu: {
         tempo: 116,
+        drumStyle: 'light',
         lead: [72, 76, 79, 76, 74, 77, 81, 77, 72, 76, 79, 83, 81, 79, 76, null, 69, 72, 76, 72, 71, 74, 77, 74, 69, 72, 76, 79, 77, 74, 72, null],
         harmony: [64, null, 67, null, 65, null, 69, null, 64, null, 67, null, 69, null, 67, null, 60, null, 64, null, 62, null, 65, null, 60, null, 64, null, 65, null, 64, null],
         bass: [48, null, 48, null, 53, null, 53, null, 48, null, 48, null, 55, null, 55, null, 45, null, 45, null, 50, null, 50, null, 45, null, 45, null, 43, null, 48, null],
     },
     battle: {
         tempo: 158,
+        drumStyle: 'drive',
         lead: [76, 76, 79, 81, 83, 81, 79, 76, 74, 74, 77, 79, 81, 79, 77, 74, 76, 79, 84, 83, 81, 79, 77, 79, 81, 84, 88, 86, 84, 83, 81, 79],
         harmony: [67, null, 71, null, 72, null, 71, null, 65, null, 69, null, 70, null, 69, null, 67, null, 72, null, 69, null, 71, null, 72, null, 76, null, 74, null, 71, null],
         bass: [40, 40, 40, 43, 45, 45, 43, 40, 38, 38, 38, 41, 43, 43, 41, 38, 40, 40, 43, 45, 47, 47, 45, 43, 45, 45, 48, 47, 45, 43, 40, 40],
     },
     victory: {
         tempo: 132,
+        drumStyle: 'fanfare',
         lead: [72, 76, 79, 84, 79, 84, 88, 91, 88, 84, 79, 76, 84, 88, 91, null],
         harmony: [64, 67, 72, 76, 72, 76, 79, 84, 79, 76, 72, 67, 76, 79, 84, null],
         bass: [48, null, 52, null, 55, null, 60, null, 55, null, 52, null, 48, 55, 60, null],
     },
     defeat: {
         tempo: 92,
+        drumStyle: 'slow',
         lead: [72, null, 71, null, 67, null, 64, null, 62, null, 60, null, 59, 55, 52, null],
         harmony: [64, null, 62, null, 59, null, 55, null, 53, null, 52, null, 50, 47, 43, null],
         bass: [48, null, 47, null, 43, null, 40, null, 38, null, 36, null, 35, null, 31, null],
@@ -41,7 +53,7 @@ let musicMaster = null;
 let musicTimer = null;
 let musicStep = 0;
 let activeMusicTheme = null;
-let musicUnlocked = false;
+let musicUnlocked = Boolean(navigator.userActivation?.hasBeenActive);
 
 const currentMusicTheme = () => {
     if (pageMusicTheme !== 'battle') return pageMusicTheme;
@@ -51,18 +63,76 @@ const currentMusicTheme = () => {
 };
 
 const noteFrequency = midi => 440 * (2 ** ((midi - 69) / 12));
-const playMusicNote = (context, output, midi, start, duration, waveform, volume) => {
+const playMusicNote = (context, output, midi, start, duration, waveform, volume, detune = 0) => {
     if (midi === null || midi === undefined) return;
     const oscillator = context.createOscillator();
     const envelope = context.createGain();
     oscillator.type = waveform;
     oscillator.frequency.setValueAtTime(noteFrequency(midi), start);
+    oscillator.detune.setValueAtTime(detune, start);
     envelope.gain.setValueAtTime(0.0001, start);
     envelope.gain.exponentialRampToValueAtTime(volume, start + 0.018);
     envelope.gain.exponentialRampToValueAtTime(0.0001, start + duration);
     oscillator.connect(envelope).connect(output);
     oscillator.start(start);
     oscillator.stop(start + duration + 0.025);
+};
+
+const noiseBuffer = context => {
+    if (context.__pokelineNoise) return context.__pokelineNoise;
+    const buffer = context.createBuffer(1, context.sampleRate, context.sampleRate);
+    const channel = buffer.getChannelData(0);
+    for (let index = 0; index < channel.length; index++) channel[index] = Math.random() * 2 - 1;
+    context.__pokelineNoise = buffer;
+    return buffer;
+};
+
+const playNoise = (context, output, start, duration, volume, frequency) => {
+    const source = context.createBufferSource();
+    const filter = context.createBiquadFilter();
+    const envelope = context.createGain();
+    source.buffer = noiseBuffer(context);
+    filter.type = 'highpass';
+    filter.frequency.setValueAtTime(frequency, start);
+    envelope.gain.setValueAtTime(volume, start);
+    envelope.gain.exponentialRampToValueAtTime(.0001, start + duration);
+    source.connect(filter).connect(envelope).connect(output);
+    source.start(start);
+    source.stop(start + duration);
+};
+
+const playKick = (context, output, start, volume = .12) => {
+    const oscillator = context.createOscillator();
+    const envelope = context.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(145, start);
+    oscillator.frequency.exponentialRampToValueAtTime(42, start + .11);
+    envelope.gain.setValueAtTime(volume, start);
+    envelope.gain.exponentialRampToValueAtTime(.0001, start + .14);
+    oscillator.connect(envelope).connect(output);
+    oscillator.start(start);
+    oscillator.stop(start + .15);
+};
+
+const playChiptuneDrums = (context, output, start, index, style) => {
+    if (style === 'drive') {
+        if (index % 4 === 0) playKick(context, output, start, .14);
+        if (index % 4 === 2) playNoise(context, output, start, .11, .07, 1250);
+        playNoise(context, output, start, .035, index % 2 ? .018 : .027, 5200);
+        return;
+    }
+    if (style === 'light') {
+        if (index % 8 === 0) playKick(context, output, start, .08);
+        if (index % 8 === 4) playNoise(context, output, start, .09, .035, 1600);
+        if (index % 2 === 0) playNoise(context, output, start, .025, .012, 6000);
+        return;
+    }
+    if (style === 'fanfare') {
+        if (index % 4 === 0) playKick(context, output, start, .1);
+        if (index % 4 === 2) playNoise(context, output, start, .08, .03, 2200);
+        return;
+    }
+    if (index % 8 === 0) playKick(context, output, start, .065);
 };
 
 const stopMusic = () => {
@@ -94,8 +164,12 @@ const startMusic = async themeName => {
     if (!AudioContextClass) return;
     const context = new AudioContextClass();
     const master = context.createGain();
-    master.gain.value = 0.48;
-    master.connect(context.destination);
+    const compressor = context.createDynamicsCompressor();
+    compressor.threshold.value = -18;
+    compressor.knee.value = 10;
+    compressor.ratio.value = 5;
+    master.gain.value = Math.max(.0001, musicVolume);
+    master.connect(compressor).connect(context.destination);
     musicContext = context;
     musicMaster = master;
     activeMusicTheme = themeName;
@@ -105,9 +179,15 @@ const startMusic = async themeName => {
         if (context !== musicContext || master !== musicMaster) return;
         const start = context.currentTime + 0.025;
         const index = musicStep % theme.lead.length;
-        playMusicNote(context, master, theme.lead[index], start, stepDuration * 0.82, 'square', 0.055);
-        playMusicNote(context, master, theme.harmony[index], start, stepDuration * 0.72, 'square', 0.018);
-        playMusicNote(context, master, theme.bass[index], start, stepDuration * 0.92, 'triangle', 0.07);
+        playMusicNote(context, master, theme.lead[index], start, stepDuration * .78, 'square', .075);
+        playMusicNote(context, master, theme.lead[index], start, stepDuration * .68, 'square', .018, 7);
+        playMusicNote(context, master, theme.harmony[index], start, stepDuration * .7, 'square', .028, -5);
+        playMusicNote(context, master, theme.bass[index], start, stepDuration * .92, 'triangle', .105);
+        if (theme.bass[index] !== null && theme.bass[index] !== undefined) {
+            const arpeggio = [12, 19, 24, 19][index % 4];
+            playMusicNote(context, master, theme.bass[index] + arpeggio, start, stepDuration * .42, 'square', .016);
+        }
+        playChiptuneDrums(context, master, start, index, theme.drumStyle);
         musicStep = (musicStep + 1) % theme.lead.length;
     };
     await context.resume().catch(() => {});
@@ -124,6 +204,33 @@ const updateMusicPreference = enabled => {
     else stopMusic();
 };
 
+const updateSoundPreference = enabled => {
+    soundEnabled = enabled;
+    localStorage.setItem('pokeline_sound', enabled ? 'on' : 'off');
+    if (soundSetting) soundSetting.checked = enabled;
+};
+
+const updateMusicVolume = value => {
+    musicVolume = Math.max(0, Math.min(1, Number(value)));
+    localStorage.setItem('pokeline_music_volume', String(musicVolume));
+    if (musicVolumeSetting) {
+        musicVolumeSetting.value = String(Math.round(musicVolume * 100));
+        musicVolumeSetting.nextElementSibling.value = `${Math.round(musicVolume * 100)}%`;
+    }
+    if (musicMaster && musicContext?.state !== 'closed') {
+        musicMaster.gain.setTargetAtTime(Math.max(.0001, musicVolume), musicContext.currentTime, .025);
+    }
+};
+
+const updateSoundVolume = value => {
+    soundVolume = Math.max(0, Math.min(1, Number(value)));
+    localStorage.setItem('pokeline_sound_volume', String(soundVolume));
+    if (soundVolumeSetting) {
+        soundVolumeSetting.value = String(Math.round(soundVolume * 100));
+        soundVolumeSetting.nextElementSibling.value = `${Math.round(soundVolume * 100)}%`;
+    }
+};
+
 if (pageMusicTheme) {
     const unlockMusic = () => {
         musicUnlocked = true;
@@ -136,25 +243,31 @@ if (pageMusicTheme) {
         else if (musicUnlocked) startMusic(currentMusicTheme());
     });
     window.addEventListener('pagehide', stopMusic);
+    if (musicUnlocked) startMusic(currentMusicTheme());
 }
 
 window.addEventListener('storage', event => {
-    if (event.key !== 'pokeline_music') return;
-    musicEnabled = event.newValue !== 'off';
-    if (musicSetting) musicSetting.checked = musicEnabled;
-    if (musicEnabled) startMusic(currentMusicTheme());
-    else stopMusic();
+    if (event.key === 'pokeline_music') {
+        musicEnabled = event.newValue !== 'off';
+        if (musicSetting) musicSetting.checked = musicEnabled;
+        if (musicEnabled) startMusic(currentMusicTheme());
+        else stopMusic();
+    }
+    if (event.key === 'pokeline_sound') updateSoundPreference(event.newValue !== 'off');
+    if (event.key === 'pokeline_music_volume') updateMusicVolume(Number(event.newValue));
+    if (event.key === 'pokeline_sound_volume') updateSoundVolume(Number(event.newValue));
 });
 
 if (settingsDialog && settingsButton) {
     soundSetting.checked = soundEnabled;
     musicSetting.checked = musicEnabled;
+    updateMusicVolume(musicVolume);
+    updateSoundVolume(soundVolume);
     settingsButton.addEventListener('click', () => settingsDialog.showModal());
-    soundSetting.addEventListener('change', () => {
-        soundEnabled = soundSetting.checked;
-        localStorage.setItem('pokeline_sound', soundEnabled ? 'on' : 'off');
-    });
+    soundSetting.addEventListener('change', () => updateSoundPreference(soundSetting.checked));
     musicSetting.addEventListener('change', () => updateMusicPreference(musicSetting.checked));
+    musicVolumeSetting?.addEventListener('input', () => updateMusicVolume(Number(musicVolumeSetting.value) / 100));
+    soundVolumeSetting?.addEventListener('input', () => updateSoundVolume(Number(soundVolumeSetting.value) / 100));
     window.addEventListener('keydown', event => {
         if (event.key.toLowerCase() !== 'p' || ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
         event.preventDefault();
@@ -545,6 +658,8 @@ if (battleApp) {
         weather: document.querySelector('#weather-label'),
         music: document.querySelector('#music-toggle'),
         sound: document.querySelector('#sound-toggle'),
+        musicVolume: document.querySelector('#battle-music-volume'),
+        soundVolume: document.querySelector('#battle-sound-volume'),
         result: document.querySelector('#battle-result'),
         connection: document.querySelector('#connection-label'),
     };
@@ -697,23 +812,100 @@ if (battleApp) {
         numbers.textContent = `${currentHp} / ${maximumHp}`;
         await wait(760);
     };
-    const playSound = (name, impact = false) => {
-        if (!soundEnabled) return;
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContext) return;
-        const context = new AudioContext();
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        oscillator.type = impact ? 'square' : 'sawtooth';
-        const seed = [...name].reduce((sum, character) => sum + character.charCodeAt(0), 0);
-        oscillator.frequency.setValueAtTime(impact ? 95 : 160 + seed % 220, context.currentTime);
-        oscillator.frequency.exponentialRampToValueAtTime(impact ? 55 : 80, context.currentTime + .16);
-        gain.gain.setValueAtTime(.07, context.currentTime);
-        gain.gain.exponentialRampToValueAtTime(.001, context.currentTime + .18);
-        oscillator.connect(gain).connect(context.destination);
-        oscillator.start();
-        oscillator.stop(context.currentTime + .19);
-        oscillator.addEventListener('ended', () => context.close());
+    const playSound = name => {
+        if (!soundEnabled || soundVolume <= 0) return;
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;
+        const context = new AudioContextClass();
+        const master = context.createGain();
+        const compressor = context.createDynamicsCompressor();
+        master.gain.value = soundVolume;
+        compressor.threshold.value = -15;
+        compressor.ratio.value = 7;
+        master.connect(compressor).connect(context.destination);
+        const now = context.currentTime;
+        let lifetime = .42;
+        const tone = (waveform, from, to, duration, gainValue, delay = 0, detune = 0) => {
+            const start = now + delay;
+            const oscillator = context.createOscillator();
+            const gain = context.createGain();
+            oscillator.type = waveform;
+            oscillator.frequency.setValueAtTime(Math.max(1, from), start);
+            oscillator.frequency.exponentialRampToValueAtTime(Math.max(1, to), start + duration);
+            oscillator.detune.setValueAtTime(detune, start);
+            gain.gain.setValueAtTime(.0001, start);
+            gain.gain.exponentialRampToValueAtTime(gainValue, start + .012);
+            gain.gain.exponentialRampToValueAtTime(.0001, start + duration);
+            oscillator.connect(gain).connect(master);
+            oscillator.start(start);
+            oscillator.stop(start + duration + .02);
+            lifetime = Math.max(lifetime, delay + duration + .08);
+        };
+        const burst = (duration, gainValue, frequency, delay = 0) => {
+            playNoise(context, master, now + delay, duration, gainValue, frequency);
+            lifetime = Math.max(lifetime, delay + duration + .08);
+        };
+        const profile = String(name || 'normal').toLowerCase();
+
+        if (profile === 'faint') {
+            lifetime = .95;
+            [0, .12, .24, .36].forEach((delay, index) => tone('square', 520 - index * 85, 230 - index * 35, .2, .1, delay));
+            tone('triangle', 180, 38, .72, .16, .08);
+            burst(.34, .055, 650, .32);
+        } else if (profile === 'critical-impact') {
+            tone('square', 155, 42, .24, .18);
+            tone('sawtooth', 330, 70, .17, .09, .015);
+            burst(.15, .11, 720);
+        } else if (profile === 'impact') {
+            tone('square', 120, 48, .18, .14);
+            burst(.11, .075, 900);
+        } else if (profile === 'heal') {
+            [0, .08, .16, .24].forEach((delay, index) => tone('square', 440 + index * 110, 660 + index * 130, .16, .055, delay));
+        } else if (profile === 'switch') {
+            tone('triangle', 150, 680, .3, .11);
+            tone('square', 300, 980, .22, .035, .08);
+        } else if (profile === 'status') {
+            tone('sine', 260, 780, .36, .08);
+            tone('square', 520, 390, .28, .035, .05, 5);
+        } else if (profile === 'fire') {
+            tone('sawtooth', 310, 95, .34, .12);
+            burst(.28, .075, 1100);
+        } else if (profile === 'water') {
+            tone('sine', 170, 760, .34, .13);
+            tone('triangle', 620, 210, .27, .07, .08);
+        } else if (profile === 'electric') {
+            [0, .055, .11, .165].forEach((delay, index) => tone('square', index % 2 ? 1250 : 720, index % 2 ? 610 : 1500, .07, .075, delay));
+            burst(.2, .035, 4200);
+        } else if (profile === 'grass' || profile === 'bug') {
+            tone('triangle', 360, 920, .3, .09);
+            tone('square', 740, 430, .2, .04, .07);
+        } else if (profile === 'ice') {
+            [0, .07, .14].forEach((delay, index) => tone('sine', 760 + index * 180, 1120 + index * 220, .18, .055, delay));
+            burst(.18, .025, 6000);
+        } else if (profile === 'psychic' || profile === 'fairy') {
+            tone('sine', 280, 1120, .38, .1);
+            tone('sine', 880, 330, .38, .065, 0, 11);
+        } else if (profile === 'ghost' || profile === 'dark') {
+            tone('sawtooth', 210, 55, .42, .095);
+            tone('sine', 480, 125, .36, .055, .04, -16);
+        } else if (profile === 'poison') {
+            tone('sawtooth', 190, 340, .36, .09);
+            tone('square', 115, 80, .32, .055, .06);
+        } else if (profile === 'flying') {
+            tone('triangle', 240, 1050, .27, .1);
+            burst(.18, .035, 3600, .05);
+        } else if (profile === 'dragon') {
+            tone('sawtooth', 145, 720, .38, .13);
+            tone('square', 310, 95, .3, .065, .08);
+        } else if (['rock', 'ground', 'steel', 'fighting'].includes(profile)) {
+            tone('square', profile === 'steel' ? 390 : 145, 48, .28, .145);
+            burst(.18, .09, profile === 'steel' ? 2600 : 650);
+        } else {
+            tone('square', 260, 105, .26, .11);
+            tone('triangle', 390, 170, .2, .05, .04);
+        }
+
+        window.setTimeout(() => context.close().catch(() => {}), lifetime * 1000);
     };
     const playSequence = async (events, previousState, finalState, you) => {
         const visualHp = {
@@ -733,7 +925,7 @@ if (battleApp) {
                 attacker.classList.remove('lunge-right', 'lunge-left');
                 void attacker.offsetWidth;
                 attacker.classList.add(event.actor === you ? 'lunge-right' : 'lunge-left');
-                playSound(event.move);
+                playSound(event.damage_class === 'status' ? 'status' : (event.move_type || event.move));
                 await wait(520);
                 continue;
             }
@@ -742,13 +934,14 @@ if (battleApp) {
                 target.classList.remove('hit-shake');
                 void target.offsetWidth;
                 target.classList.add('hit-shake');
-                playSound('impact', true);
+                playSound(Number(event.effectiveness || 1) > 1 ? 'critical-impact' : 'impact');
                 await wait(180);
                 visualHp[event.target] = Math.max(0, visualHp[event.target] - Number(event.amount || 0));
                 await animateHp(event.target, you, visualHp[event.target], maximumHp[event.target]);
                 continue;
             }
             if (event.type === 'heal') {
+                playSound('heal');
                 visualHp[event.target] = Math.min(maximumHp[event.target], visualHp[event.target] + Number(event.amount || 0));
                 await animateHp(event.target, you, visualHp[event.target], maximumHp[event.target]);
                 continue;
@@ -757,11 +950,12 @@ if (battleApp) {
                 const target = spriteElementFor(event.target, you);
                 await wait(420);
                 target.classList.add('faint-out');
-                playSound('faint', true);
+                playSound('faint');
                 await wait(720);
                 continue;
             }
             if (event.type === 'switch') {
+                playSound('switch');
                 await wait(350);
                 const target = spriteElementFor(event.target, you);
                 const pokemon = active(finalState, event.target);
@@ -940,15 +1134,17 @@ if (battleApp) {
     };
 
     els.sound.addEventListener('click', () => {
-        soundEnabled = !soundEnabled;
-        localStorage.setItem('pokeline_sound', soundEnabled ? 'on' : 'off');
-        if (soundSetting) soundSetting.checked = soundEnabled;
+        updateSoundPreference(!soundEnabled);
         els.sound.textContent = `${soundEnabled ? '🔊' : '🔇'} ${config.text.sound}`;
     });
     els.music.addEventListener('click', () => {
         updateMusicPreference(!musicEnabled);
         els.music.textContent = `${musicEnabled ? '🎵' : '🚫'} ${config.text.music}`;
     });
+    els.musicVolume.value = String(Math.round(musicVolume * 100));
+    els.soundVolume.value = String(Math.round(soundVolume * 100));
+    els.musicVolume.addEventListener('input', () => updateMusicVolume(Number(els.musicVolume.value) / 100));
+    els.soundVolume.addEventListener('input', () => updateSoundVolume(Number(els.soundVolume.value) / 100));
     els.sound.textContent = `${soundEnabled ? '🔊' : '🔇'} ${config.text.sound}`;
     els.music.textContent = `${musicEnabled ? '🎵' : '🚫'} ${config.text.music}`;
     refresh();

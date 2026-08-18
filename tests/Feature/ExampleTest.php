@@ -19,7 +19,10 @@ class ExampleTest extends TestCase
         $response->assertStatus(200)
             ->assertSee('world-hub')
             ->assertSee('hub-character')
-            ->assertSee('global-music');
+            ->assertSee('global-music')
+            ->assertSee('global-music-volume')
+            ->assertSee('global-sound-volume')
+            ->assertDontSee('online-team-workshop');
     }
 
     public function test_local_setup_and_arena_views_render(): void
@@ -29,6 +32,8 @@ class ExampleTest extends TestCase
             ->get('/battle')
             ->assertOk()
             ->assertSee('local-controls')
-            ->assertSee('music-toggle');
+            ->assertSee('music-toggle')
+            ->assertSee('battle-music-volume')
+            ->assertSee('battle-sound-volume');
     }
 }

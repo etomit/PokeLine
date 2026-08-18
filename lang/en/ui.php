@@ -38,6 +38,8 @@ return [
     'turn' => 'Turn',
     'sound' => 'Sound',
     'music' => 'Music',
+    'music_volume' => 'Music volume',
+    'effects_volume' => 'Effects volume',
     'enabled' => 'on',
     'disabled' => 'off',
     'choose_attack' => 'Choose a move',

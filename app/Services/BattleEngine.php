@@ -188,7 +188,14 @@ class BattleEngine
         }
         $move = &$actor['moves'][$moveIndex];
         $move['current_pp'] = max(0, ($move['current_pp'] ?? $move['pp'] ?? 1) - 1);
-        $events[] = ['type' => 'attack', 'actor' => $actorKey, 'move' => $move['name'], 'text' => __('battle.uses', ['pokemon' => $actor['label'], 'move' => $move['label']])];
+        $events[] = [
+            'type' => 'attack',
+            'actor' => $actorKey,
+            'move' => $move['name'],
+            'move_type' => $move['type'] ?? 'normal',
+            'damage_class' => $move['damage_class'] ?? 'status',
+            'text' => __('battle.uses', ['pokemon' => $actor['label'], 'move' => $move['label']]),
+        ];
 
         if (! $this->canAct($actor, $actorKey, $events)) {
             return;

@@ -69,12 +69,13 @@ class BattleSetupInterfaceTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $this->actingAs($user)->get('/')
+        $this->actingAs($user)->get('/online/teams')
             ->assertOk()
             ->assertSee('id="online-team-roster"', false)
             ->assertSee('data-team-preview="online-team-roster"', false)
             ->assertSee('data-pokedex-mode="append"', false)
             ->assertSee('data-item-select="online-team-roster"', false)
+            ->assertSee('id="online-inventory"', false)
             ->assertDontSee('id="team-pokemon-0"', false);
 
         $this->actingAs($user)->get('/online/teams')
