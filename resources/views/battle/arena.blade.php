@@ -14,21 +14,40 @@
             'waitingReplacement' => __('ui.waiting_replacement'),
             'victoryMessage' => __('ui.victory_message'),
             'defeatMessage' => __('ui.defeat_message'),
+            'spectating' => __('ui.spectating'),
+            'battleFinished' => __('ui.battle_finished'),
+            'winnerMessage' => __('ui.winner_message'),
+            'liveSpectator' => __('ui.live_spectator'),
         ];
+        $spectator = $kind === 'spectator';
+        $stateUrl = match ($kind) {
+            'online' => route('battle.online.state', $battle),
+            'spectator' => route('battle.spectate.state', $battle),
+            default => route('battle.session.state'),
+        };
+        $actionUrl = $kind === 'online' ? route('battle.online.action', $battle) : ($kind === 'session' ? route('battle.session.action') : '');
     @endphp
     @if($kind === 'online' && $battle->status === 'waiting')
-        <div class="waiting-card screen-panel"><div class="signal-loader"><i></i><i></i><i></i></div><p>{{ $battle->mode === 'online-private' ? __('ui.waiting_invited_player') : __('ui.searching_opponent') }}</p>@if($battle->mode === 'online-private')<strong class="room-code">{{ $battle->code }}</strong><small>{{ __('ui.share_code') }}</small>@else<div class="radar-animation large"><i></i></div><small>{{ __('ui.public_search_active') }}</small>@endif</div>
+        <div class="waiting-card screen-panel">
+            <div class="signal-loader"><i></i><i></i><i></i></div>
+            <p>{{ $battle->mode === 'online-private' ? __('ui.waiting_invited_player') : __('ui.searching_opponent') }}</p>
+            @if($battle->mode === 'online-private')<strong class="room-code">{{ $battle->code }}</strong><small>{{ __('ui.share_code') }}</small>@else<div class="radar-animation large"><i></i></div><small>{{ __('ui.public_search_active') }}</small>@endif
+            <form action="{{ route('battle.online.cancel', $battle) }}" method="post">@csrf @method('DELETE')<button class="online-danger" type="submit">{{ __('ui.cancel_search') }}</button></form>
+        </div>
     @endif
-    <div id="battle-app" class="battle-app arena-{{ $mode }} {{ $kind === 'online' && $battle->status === 'waiting' ? 'is-waiting' : '' }}"
+    <div id="battle-app" class="battle-app arena-{{ $mode }} {{ $kind === 'online' && $battle->status === 'waiting' ? 'is-waiting' : '' }} {{ $spectator ? 'is-spectator' : '' }}"
          data-kind="{{ $kind }}"
          data-mode="{{ $mode }}"
-         data-state-url="{{ $kind === 'online' ? route('battle.online.state', $battle) : route('battle.session.state') }}"
-         data-action-url="{{ $kind === 'online' ? route('battle.online.action', $battle) : route('battle.session.action') }}"
+         data-state-url="{{ $stateUrl }}"
+         data-action-url="{{ $actionUrl }}"
          data-translations='@json($battleTranslations)'>
         <div class="battle-toolbar">
             <span id="turn-label">{{ __('ui.turn') }} 1</span>
-            <span id="weather-label"></span>
+            <span id="weather-label">{{ $spectator ? __('ui.live_spectator') : '' }}</span>
             <div class="battle-audio-controls">
+                @if($kind === 'online' && $battle->status === 'active')
+                    <form action="{{ route('battle.online.forfeit', $battle) }}" method="post">@csrf<button class="battle-forfeit" type="submit">{{ __('ui.forfeit') }}</button></form>
+                @endif
                 <button id="music-toggle" type="button">🎵 {{ __('ui.music') }}</button>
                 <button id="sound-toggle" type="button">🔊 {{ __('ui.sound') }}</button>
             </div>
@@ -52,7 +71,7 @@
             <h2 data-result-title></h2>
             <p data-result-message></p>
             <p class="result-rewards" data-result-rewards hidden></p>
-            <a class="pixel-button" href="{{ route('home') }}">{{ __('ui.return_to_menu') }}</a>
+            <a class="pixel-button" href="{{ in_array($kind, ['online', 'spectator'], true) ? route('battle.lobby') : route('home') }}">{{ in_array($kind, ['online', 'spectator'], true) ? __('ui.return_to_online_center') : __('ui.return_to_menu') }}</a>
         </section>
     </div>
 </section>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Battle;
 use App\Models\Team;
 use App\Services\PokeApiService;
 use Illuminate\Http\Request;
@@ -10,11 +11,23 @@ use Illuminate\Validation\ValidationException;
 
 class TeamController extends Controller
 {
+    public function index(Request $request)
+    {
+        return view('teams.index', [
+            'teams' => $request->user()->teams()->with(['pokemon.heldItem'])->latest()->get(),
+            'inventory' => $request->user()->inventory()->with('item')->where('quantity', '>', 0)->get(),
+        ]);
+    }
+
     public function store(Request $request, PokeApiService $pokeApi)
     {
         $pokemon = [];
         $items = [];
-        foreach ((array) $request->input('pokemon', []) as $slot => $identifier) {
+        $submittedPokemon = $request->filled('team_roster')
+            ? explode(',', $request->string('team_roster')->value())
+            : (array) $request->input('pokemon', []);
+
+        foreach ($submittedPokemon as $slot => $identifier) {
             if (trim((string) $identifier) === '') {
                 continue;
             }
@@ -66,6 +79,13 @@ class TeamController extends Controller
     public function destroy(Request $request, Team $team)
     {
         abort_unless($team->user_id === $request->user()->id, 403);
+        abort_if(
+            Battle::whereIn('status', ['waiting', 'active'])
+                ->where(fn ($query) => $query->where('host_team_id', $team->id)->orWhere('guest_team_id', $team->id))
+                ->exists(),
+            409,
+            __('ui.team_in_active_battle'),
+        );
         $team->delete();
 
         return back()->with('success', __('ui.team_deleted'));

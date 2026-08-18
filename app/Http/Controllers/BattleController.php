@@ -107,6 +107,8 @@ class BattleController extends Controller
 
     public function lobby(Request $request)
     {
+        $userId = $request->user()->id;
+
         return view('battle.lobby', [
             'teams' => $request->user()->teams()->with('pokemon')->get(),
             'battles' => Battle::with(['host', 'hostTeam.pokemon'])
@@ -114,6 +116,23 @@ class BattleController extends Controller
                 ->where('mode', 'online-public')
                 ->where('host_id', '!=', $request->user()->id)
                 ->oldest()
+                ->get(),
+            'liveBattles' => Battle::with(['host', 'guest', 'hostTeam.pokemon', 'guestTeam.pokemon'])
+                ->where('status', 'active')
+                ->where('mode', 'online-public')
+                ->latest('updated_at')
+                ->limit(12)
+                ->get(),
+            'myBattles' => Battle::with(['host', 'guest', 'hostTeam.pokemon', 'guestTeam.pokemon'])
+                ->whereIn('status', ['waiting', 'active'])
+                ->where(fn ($query) => $query->where('host_id', $userId)->orWhere('guest_id', $userId))
+                ->latest('updated_at')
+                ->get(),
+            'recentBattles' => Battle::with(['host', 'guest', 'winner'])
+                ->where('status', 'finished')
+                ->where(fn ($query) => $query->where('host_id', $userId)->orWhere('guest_id', $userId))
+                ->latest('finished_at')
+                ->limit(10)
                 ->get(),
         ]);
     }
@@ -127,6 +146,10 @@ class BattleController extends Controller
         $team = $request->user()->teams()->findOrFail($data['team_id']);
         abort_if($team->pokemon()->count() === 0, 422);
         $queueType = $data['queue_type'] ?? 'public';
+
+        if ($currentBattle = $this->openBattleFor($request->user()->id)) {
+            return redirect()->route('battle.online.show', $currentBattle);
+        }
 
         if ($queueType === 'public') {
             $battle = DB::transaction(function () use ($request, $team, $engine) {
@@ -175,6 +198,10 @@ class BattleController extends Controller
         $team = $request->user()->teams()->findOrFail($data['team_id']);
         $battle ??= Battle::where('code', strtoupper($data['code']))->where('mode', 'online-private')->firstOrFail();
 
+        if ($currentBattle = $this->openBattleFor($request->user()->id)) {
+            return redirect()->route('battle.online.show', $currentBattle);
+        }
+
         DB::transaction(function () use ($request, $team, $battle, $engine) {
             $locked = Battle::whereKey($battle->id)->lockForUpdate()->firstOrFail();
             if ($locked->status !== 'waiting' || $locked->host_id === $request->user()->id) {
@@ -208,6 +235,76 @@ class BattleController extends Controller
             'you' => $you,
             'submitted' => isset(($battle->pending_actions ?? [])[$you]),
         ]);
+    }
+
+    public function spectate(Battle $battle)
+    {
+        $this->authorizeSpectatorBattle($battle);
+
+        return view('battle.arena', ['kind' => 'spectator', 'mode' => 'online', 'battle' => $battle]);
+    }
+
+    public function spectatorState(Battle $battle): JsonResponse
+    {
+        $this->authorizeSpectatorBattle($battle);
+        $battle->refresh();
+
+        return response()->json([
+            'status' => $battle->status,
+            'state' => $battle->state,
+            'version' => $battle->version,
+            'mode' => 'online',
+            'you' => 'p1',
+            'submitted' => false,
+            'spectator' => true,
+        ]);
+    }
+
+    public function cancelOnline(Request $request, Battle $battle)
+    {
+        abort_unless($battle->host_id === $request->user()->id, 403);
+
+        DB::transaction(function () use ($battle) {
+            $locked = Battle::whereKey($battle->id)->lockForUpdate()->firstOrFail();
+            abort_unless($locked->status === 'waiting', 409);
+            $locked->delete();
+        });
+
+        return redirect()->route('battle.lobby')->with('success', __('ui.search_cancelled'));
+    }
+
+    public function forfeitOnline(Request $request, Battle $battle)
+    {
+        $this->authorizeParticipant($request, $battle);
+
+        DB::transaction(function () use ($request, $battle) {
+            $locked = Battle::whereKey($battle->id)->lockForUpdate()->firstOrFail();
+            abort_unless($locked->status === 'active' && $locked->guest_id !== null, 409);
+
+            $loser = $locked->host_id === $request->user()->id ? 'p1' : 'p2';
+            $winner = $loser === 'p1' ? 'p2' : 'p1';
+            $winnerId = $winner === 'p1' ? $locked->host_id : $locked->guest_id;
+            $state = $locked->state;
+            $trainerName = $state['players'][$loser]['name'] ?? $request->user()->name;
+            $event = ['type' => 'finish', 'winner' => $winner, 'text' => __('battle.forfeit', ['player' => $trainerName])];
+            $state['phase'] = 'finished';
+            $state['winner'] = $winner;
+            $state['forced_switch'] = [];
+            $state['last_events'] = [$event];
+            $state['log'] = array_slice(array_merge($state['log'] ?? [], [$event['text']]), -40);
+
+            $locked->update([
+                'status' => 'finished',
+                'state' => $state,
+                'pending_actions' => [],
+                'winner_id' => $winnerId,
+                'version' => $locked->version + 1,
+                'rewards' => $this->grantRewards($locked, $winnerId),
+                'finished_at' => now(),
+            ]);
+        });
+
+        return redirect()->route('battle.lobby')->with('success', __('ui.battle_forfeited'));
     }
 
     public function onlineAction(Request $request, Battle $battle, BattleEngine $engine): JsonResponse
@@ -339,6 +436,22 @@ class BattleController extends Controller
     private function authorizeParticipant(Request $request, Battle $battle): void
     {
         abort_unless(in_array($request->user()->id, [$battle->host_id, $battle->guest_id], true), 403);
+    }
+
+    private function authorizeSpectatorBattle(Battle $battle): void
+    {
+        abort_unless(
+            $battle->mode === 'online-public' && in_array($battle->status, ['active', 'finished'], true),
+            404,
+        );
+    }
+
+    private function openBattleFor(int $userId): ?Battle
+    {
+        return Battle::whereIn('status', ['waiting', 'active'])
+            ->where(fn ($query) => $query->where('host_id', $userId)->orWhere('guest_id', $userId))
+            ->latest('updated_at')
+            ->first();
     }
 
     private function uniqueCode(): string

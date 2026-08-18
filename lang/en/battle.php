@@ -41,4 +41,5 @@ return [
     'weather_damage' => 'The weather deals :damage HP to :pokemon.',
     'weather_ended' => 'The weather returned to normal.',
     'intimidate' => ':pokemon’s Intimidate lowered the foe’s Attack!',
+    'forfeit' => ':player forfeited the battle!',
 ];

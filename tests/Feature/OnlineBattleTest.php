@@ -87,6 +87,89 @@ class OnlineBattleTest extends TestCase
         $this->assertSame('active', $battle->fresh()->status);
     }
 
+    public function test_a_host_can_cancel_a_waiting_search(): void
+    {
+        $host = User::factory()->create();
+        $team = $this->team($host, 'Search Team', 100, 70);
+
+        $this->actingAs($host)->post('/online/create', ['team_id' => $team->id])->assertRedirect();
+        $battle = Battle::firstOrFail();
+
+        $this->actingAs($host)->delete("/online/{$battle->public_id}/cancel")->assertRedirect('/online');
+        $this->assertDatabaseMissing('battles', ['id' => $battle->id]);
+    }
+
+    public function test_forfeit_finishes_the_battle_and_awards_both_players(): void
+    {
+        $this->seed(ItemSeeder::class);
+        $host = User::factory()->create(['name' => 'Host']);
+        $guest = User::factory()->create(['name' => 'Guest']);
+        $hostTeam = $this->team($host, 'Host Team', 100, 70);
+        $guestTeam = $this->team($guest, 'Guest Team', 90, 70);
+
+        $this->actingAs($host)->post('/online/create', ['team_id' => $hostTeam->id]);
+        $battle = Battle::firstOrFail();
+        $this->actingAs($guest)->post("/online/{$battle->public_id}/join", ['team_id' => $guestTeam->id]);
+
+        $this->actingAs($guest)->post("/online/{$battle->public_id}/forfeit")->assertRedirect('/online');
+
+        $battle->refresh();
+        $this->assertSame('finished', $battle->status);
+        $this->assertSame($host->id, $battle->winner_id);
+        $this->assertSame('finished', $battle->state['phase']);
+        $this->assertSame('p1', $battle->state['winner']);
+        $this->assertBetween(1, 3, $host->inventory()->sum('quantity'));
+        $this->assertBetween(0, 2, $guest->inventory()->sum('quantity'));
+    }
+
+    public function test_public_battles_can_be_watched_but_private_battles_cannot(): void
+    {
+        $host = User::factory()->create(['name' => 'Dawn']);
+        $guest = User::factory()->create(['name' => 'Lucas']);
+        $spectator = User::factory()->create(['name' => 'Cynthia']);
+        $hostTeam = $this->team($host, 'Torterra', 100, 70);
+        $guestTeam = $this->team($guest, 'Infernape', 90, 70);
+
+        $this->actingAs($host)->post('/online/create', ['team_id' => $hostTeam->id, 'queue_type' => 'public']);
+        $publicBattle = Battle::firstOrFail();
+        $this->actingAs($guest)->post("/online/{$publicBattle->public_id}/join", ['team_id' => $guestTeam->id]);
+
+        $this->actingAs($spectator)->get("/online/{$publicBattle->public_id}/watch")
+            ->assertOk()
+            ->assertSee('data-kind="spectator"', false);
+        $this->actingAs($spectator)->getJson("/online/{$publicBattle->public_id}/watch/state")
+            ->assertOk()
+            ->assertJson(['spectator' => true, 'status' => 'active']);
+        $this->actingAs($spectator)->postJson("/online/{$publicBattle->public_id}/action", ['move_index' => 0])->assertForbidden();
+
+        $privateBattle = Battle::create([
+            'public_id' => fake()->uuid(), 'code' => 'SECRET', 'mode' => 'online-private', 'status' => 'active',
+            'host_id' => $host->id, 'guest_id' => $guest->id, 'host_team_id' => $hostTeam->id, 'guest_team_id' => $guestTeam->id,
+            'state' => $publicBattle->fresh()->state,
+        ]);
+        $this->actingAs($spectator)->get("/online/{$privateBattle->public_id}/watch")->assertNotFound();
+    }
+
+    public function test_lobby_lists_active_battles_for_reconnection_and_public_spectating(): void
+    {
+        $host = User::factory()->create(['name' => 'Dawn']);
+        $guest = User::factory()->create(['name' => 'Lucas']);
+        $viewer = User::factory()->create();
+        $hostTeam = $this->team($host, 'Torterra', 100, 70);
+        $guestTeam = $this->team($guest, 'Infernape', 90, 70);
+
+        $this->actingAs($host)->post('/online/create', ['team_id' => $hostTeam->id]);
+        $battle = Battle::firstOrFail();
+        $this->actingAs($guest)->post("/online/{$battle->public_id}/join", ['team_id' => $guestTeam->id]);
+
+        $this->actingAs($host)->get('/online')
+            ->assertOk()
+            ->assertSee(route('battle.online.show', $battle), false);
+        $this->actingAs($viewer)->get('/online')
+            ->assertOk()
+            ->assertSee(route('battle.spectate', $battle), false);
+    }
+
     private function team(User $user, string $name, int $speed, int $power): Team
     {
         $team = $user->teams()->create(compact('name'));

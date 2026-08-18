@@ -28,12 +28,17 @@ Route::get('/battle/state', [BattleController::class, 'sessionState'])->name('ba
 Route::post('/battle/action', [BattleController::class, 'sessionAction'])->name('battle.session.action');
 
 Route::middleware('auth')->group(function () {
+    Route::get('/online/teams', [TeamController::class, 'index'])->name('teams.index');
     Route::post('/teams', [TeamController::class, 'store'])->name('teams.store');
     Route::delete('/teams/{team}', [TeamController::class, 'destroy'])->name('teams.destroy');
     Route::get('/online', [BattleController::class, 'lobby'])->name('battle.lobby');
     Route::post('/online/create', [BattleController::class, 'createOnline'])->name('battle.online.create');
     Route::post('/online/join', [BattleController::class, 'joinOnline'])->name('battle.online.join-code');
     Route::post('/online/{battle}/join', [BattleController::class, 'joinOnline'])->name('battle.online.join');
+    Route::get('/online/{battle}/watch', [BattleController::class, 'spectate'])->name('battle.spectate');
+    Route::get('/online/{battle}/watch/state', [BattleController::class, 'spectatorState'])->name('battle.spectate.state');
+    Route::delete('/online/{battle}/cancel', [BattleController::class, 'cancelOnline'])->name('battle.online.cancel');
+    Route::post('/online/{battle}/forfeit', [BattleController::class, 'forfeitOnline'])->name('battle.online.forfeit');
     Route::get('/online/{battle}', [BattleController::class, 'onlineShow'])->name('battle.online.show');
     Route::get('/online/{battle}/state', [BattleController::class, 'onlineState'])->name('battle.online.state');
     Route::post('/online/{battle}/action', [BattleController::class, 'onlineAction'])->name('battle.online.action');

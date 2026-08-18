@@ -41,4 +41,5 @@ return [
     'weather_damage' => 'La météo inflige :damage PV à :pokemon.',
     'weather_ended' => 'La météo redevient normale.',
     'intimidate' => 'Intimidation de :pokemon baisse l’Attaque adverse !',
+    'forfeit' => ':player abandonne le combat !',
 ];

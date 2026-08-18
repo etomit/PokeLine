@@ -38,6 +38,11 @@ class Battle extends Model
         return $this->belongsTo(User::class, 'guest_id');
     }
 
+    public function winner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'winner_id');
+    }
+
     public function hostTeam(): BelongsTo
     {
         return $this->belongsTo(Team::class, 'host_team_id');

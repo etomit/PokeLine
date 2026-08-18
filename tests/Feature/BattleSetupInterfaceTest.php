@@ -64,4 +64,41 @@ class BattleSetupInterfaceTest extends TestCase
 
         $this->assertSame(3, $user->teams()->firstOrFail()->pokemon()->where('pokemon_name', 'yveltal')->count());
     }
+
+    public function test_online_team_creation_uses_the_visual_six_slot_editor(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->get('/')
+            ->assertOk()
+            ->assertSee('id="online-team-roster"', false)
+            ->assertSee('data-team-preview="online-team-roster"', false)
+            ->assertSee('data-pokedex-mode="append"', false)
+            ->assertSee('data-item-select="online-team-roster"', false)
+            ->assertDontSee('id="team-pokemon-0"', false);
+
+        $this->actingAs($user)->get('/online/teams')
+            ->assertOk()
+            ->assertSee('id="online-team-roster"', false)
+            ->assertSee('data-pokedex-mode="append"', false);
+    }
+
+    public function test_online_visual_roster_accepts_duplicate_pokemon(): void
+    {
+        $user = User::factory()->create();
+        $snapshot = [
+            'id' => 717, 'name' => 'yveltal', 'label' => 'Yveltal', 'level' => 100,
+            'types' => ['dark', 'flying'], 'stats' => ['hp' => 393], 'moves' => [],
+            'sprites' => ['front' => '/yveltal.png', 'back' => '/back/yveltal.png'],
+        ];
+        $this->mock(PokeApiService::class)->shouldReceive('pokemon')->times(3)->with('yveltal')->andReturn($snapshot);
+
+        $this->actingAs($user)->post('/teams', [
+            'name' => 'Visual Trio',
+            'team_roster' => 'yveltal, yveltal, yveltal',
+            'items' => [null, null, null],
+        ])->assertRedirect();
+
+        $this->assertSame(3, $user->teams()->firstOrFail()->pokemon()->count());
+    }
 }

@@ -352,7 +352,8 @@ document.querySelectorAll('[data-team-input]').forEach(input => {
     const escapePreview = value => String(value ?? '').replace(/[&<>'"]/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[character]));
     const emptyMarkup = index => `<span class="party-index">${index + 1}</span><i class="party-ball" aria-hidden="true"></i><div class="party-data"><div class="party-name"><b>—</b><em>Lv.—</em></div><div class="party-hp"><strong>PV</strong><i><span style="width:0"></span></i></div><div class="party-meta"><small>— / —</small><small>—</small></div></div>`;
     const loadingMarkup = (index, name) => `<span class="party-index">${index + 1}</span><i class="party-ball" aria-hidden="true"></i><div class="party-data"><div class="party-name"><b>${escapePreview(name)}</b><em>…</em></div><div class="party-hp"><strong>PV</strong><i><span style="width:35%"></span></i></div></div>`;
-    const occupiedMarkup = (entry, index) => `<button type="button" class="party-remove" data-remove-pokemon="${index}" aria-label="×">×</button><span class="party-index">${index + 1}</span><i class="party-ball" aria-hidden="true"></i><img src="${escapePreview(entry.sprites.front)}" alt=""><div class="party-data"><div class="party-name"><b>${escapePreview(entry.label)}</b><em>Lv.100</em></div><div class="party-hp"><strong>PV</strong><i><span style="width:100%"></span></i></div><div class="party-meta"><small>${entry.stats.hp} / ${entry.stats.hp}</small><small>${entry.types.map(type => escapePreview(translatedType(type))).join(' / ')}</small></div><div class="party-item" data-party-item>${escapePreview(itemSelects[index]?.selectedOptions[0]?.textContent.split(' — ')[0] || '—')}</div></div>`;
+    const itemLabel = select => select?.selectedOptions[0]?.dataset.itemLabel || select?.selectedOptions[0]?.textContent.split(' — ')[0] || '—';
+    const occupiedMarkup = (entry, index) => `<button type="button" class="party-remove" data-remove-pokemon="${index}" aria-label="×">×</button><span class="party-index">${index + 1}</span><i class="party-ball" aria-hidden="true"></i><img src="${escapePreview(entry.sprites.front)}" alt=""><div class="party-data"><div class="party-name"><b>${escapePreview(entry.label)}</b><em>Lv.100</em></div><div class="party-hp"><strong>PV</strong><i><span style="width:100%"></span></i></div><div class="party-meta"><small>${entry.stats.hp} / ${entry.stats.hp}</small><small>${entry.types.map(type => escapePreview(translatedType(type))).join(' / ')}</small></div><div class="party-item" data-party-item>${escapePreview(itemLabel(itemSelects[index]))}</div></div>`;
     const slots = Array.from({length: 6}, (_, index) => {
         const slot = document.createElement('div');
         slot.className = 'team-preview-slot empty';
@@ -391,6 +392,14 @@ document.querySelectorAll('[data-team-input]').forEach(input => {
         slot.innerHTML = occupiedMarkup(entry, index);
         slot.querySelector('[data-remove-pokemon]').addEventListener('click', () => removePokemon(index));
     };
+    const syncOwnedItemLimits = () => {
+        const selectedCounts = itemSelects.filter(select => !select.disabled && select.value).reduce((counts, select) => counts.set(select.value, (counts.get(select.value) || 0) + 1), new Map());
+        itemSelects.forEach(select => [...select.options].forEach(option => {
+            if (!option.value || !option.dataset.quantity) return;
+            const usedElsewhere = (selectedCounts.get(option.value) || 0) - (select.value === option.value ? 1 : 0);
+            option.disabled = usedElsewhere >= Number(option.dataset.quantity);
+        }));
+    };
     const syncItems = (names, entries = []) => {
         itemsPanel.hidden = names.length === 0;
         itemSelects.forEach((select, index) => {
@@ -402,6 +411,7 @@ document.querySelectorAll('[data-team-input]').forEach(input => {
             const title = label.querySelector('[data-item-slot-label]');
             if (title) title.textContent = `#${index + 1} ${entries[index]?.label || (visible ? names[index] : '—')}`;
         });
+        syncOwnedItemLimits();
     };
     const renderPreview = async () => {
         const currentVersion = ++renderVersion;
@@ -450,7 +460,8 @@ document.querySelectorAll('[data-team-input]').forEach(input => {
     input.addEventListener('change', renderPreview);
     itemSelects.forEach(select => select.addEventListener('change', () => {
         const item = preview.querySelector(`[data-party-slot="${select.dataset.slot}"] [data-party-item]`);
-        if (item) item.textContent = select.selectedOptions[0]?.textContent.split(' — ')[0] || '—';
+        if (item) item.textContent = itemLabel(select);
+        syncOwnedItemLimits();
     }));
     renderPreview();
 });
@@ -561,6 +572,7 @@ if (battleApp) {
     let animating = false;
     let refreshing = false;
     let renderedVersion = null;
+    const spectator = config.kind === 'spectator';
 
     const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
     const request = async (url, options = {}) => {
@@ -614,12 +626,15 @@ if (battleApp) {
             els.result.hidden = true;
             return;
         }
-        const victory = state.winner === you;
+        const victory = spectator || state.winner === you;
         startMusic(victory ? 'victory' : 'defeat');
         els.result.classList.toggle('victory', victory);
         els.result.classList.toggle('defeat', !victory);
-        els.result.querySelector('[data-result-title]').textContent = victory ? config.text.victory : config.text.defeat;
-        els.result.querySelector('[data-result-message]').textContent = victory ? config.text.victoryMessage : config.text.defeatMessage;
+        els.result.querySelector('[data-result-title]').textContent = spectator ? config.text.battleFinished : (victory ? config.text.victory : config.text.defeat);
+        const winnerName = state.players?.[state.winner]?.name || '';
+        els.result.querySelector('[data-result-message]').textContent = spectator
+            ? config.text.winnerMessage.replace(':trainer', winnerName)
+            : (victory ? config.text.victoryMessage : config.text.defeatMessage);
         const rewards = els.result.querySelector('[data-result-rewards]');
         rewards.hidden = !reward?.length;
         rewards.textContent = reward?.length ? `${config.text.rewards}: ${reward.join(', ')}` : '';
@@ -641,15 +656,19 @@ if (battleApp) {
         setCombatant(state, you, you);
         setCombatant(state, enemy, you);
         els.turn.textContent = `${config.text.turn} ${state.turn}`;
-        els.weather.textContent = state.weather ? `${config.text.weather}: ${state.weather.toUpperCase()} (${state.weather_turns})` : '';
+        els.weather.textContent = state.weather ? `${config.text.weather}: ${state.weather.toUpperCase()} (${state.weather_turns})` : (spectator ? config.text.liveSpectator : '');
         els.log.innerHTML = state.log.slice().reverse().map(line => `<div>› ${escape(line)}</div>`).join('');
 
         const submitted = Boolean(data.submitted);
         const ownForced = Boolean(forced[you]);
         const opponentForced = forcedKeys.length > 0 && !ownForced;
-        const controlsDisabled = disabled || busy || animating || submitted || opponentForced || state.phase !== 'active';
-        els.moves.innerHTML = controlsMarkup(state, you, controlsDisabled, ownForced);
-        bindActions(els.moves);
+        const controlsDisabled = spectator || disabled || busy || animating || submitted || opponentForced || state.phase !== 'active';
+        if (spectator) {
+            els.moves.innerHTML = `<div class="spectator-command"><span class="live-dot"></span>${escape(config.text.spectating)}</div>`;
+        } else {
+            els.moves.innerHTML = controlsMarkup(state, you, controlsDisabled, ownForced);
+            bindActions(els.moves);
+        }
 
         if ((data.mode || config.mode) === 'local') {
             battleApp.classList.add('local-mode');
@@ -664,7 +683,9 @@ if (battleApp) {
 
         if (!preserveMessage) {
             showMessage(state.phase === 'finished'
-                ? (state.winner === you ? config.text.victory : config.text.defeat)
+                ? (spectator ? config.text.battleFinished : (state.winner === you ? config.text.victory : config.text.defeat))
+                : spectator
+                    ? (state.last_events?.at(-1)?.text || config.text.spectating)
                 : ownForced
                     ? config.text.chooseReplacement
                     : opponentForced
@@ -840,5 +861,5 @@ if (battleApp) {
     els.sound.textContent = `${soundEnabled ? '🔊' : '🔇'} ${config.text.sound}`;
     els.music.textContent = `${musicEnabled ? '🎵' : '🚫'} ${config.text.music}`;
     refresh();
-    if (config.kind === 'online') setInterval(refresh, 1400);
+    if (config.kind === 'online' || config.kind === 'spectator') setInterval(refresh, 1400);
 }
