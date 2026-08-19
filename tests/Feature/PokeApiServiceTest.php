@@ -39,7 +39,10 @@ class PokeApiServiceTest extends TestCase
         Cache::flush();
         Http::fake([
             '*/pokemon?*' => Http::response([
-                'results' => [['name' => 'bulbasaur', 'url' => 'https://pokeapi.co/api/v2/pokemon/1/']],
+                'results' => [
+                    ['name' => 'bulbasaur', 'url' => 'https://pokeapi.co/api/v2/pokemon/1/'],
+                    ['name' => 'rayquaza-mega', 'url' => 'https://pokeapi.co/api/v2/pokemon/10079/'],
+                ],
             ]),
             '*/pokemon-species/1' => Http::response([
                 'names' => [
@@ -53,7 +56,25 @@ class PokeApiServiceTest extends TestCase
         $catalog = app(PokeApiService::class)->catalog();
 
         $this->assertSame('Bulbizarre', $catalog['data'][0]['label']);
+        $this->assertSame(1, $catalog['total']);
         $this->assertSame('bulbasaur', app(PokeApiService::class)->catalog(1, 'Bulbizarre')['data'][0]['name']);
+        $this->assertSame([], app(PokeApiService::class)->catalog(1, 'mega')['data']);
+    }
+
+    public function test_alternate_forms_cannot_be_loaded_as_team_members(): void
+    {
+        Cache::flush();
+        $megaRayquaza = $this->pokemonResponse();
+        $megaRayquaza['id'] = 10079;
+        $megaRayquaza['name'] = 'rayquaza-mega';
+        Http::fake([
+            '*/pokemon/rayquaza-mega' => Http::response($megaRayquaza),
+        ]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage(__('ui.pokemon_form_not_selectable'));
+
+        app(PokeApiService::class)->pokemon('rayquaza-mega');
     }
 
     private function pokemonResponse(): array

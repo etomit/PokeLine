@@ -23,6 +23,14 @@
         <nav>
             <a href="{{ route('pokedex') }}">{{ __('ui.pokedex') }}</a>
         </nav>
+        <div class="presence-counters" data-presence-counters data-presence-url="{{ route('presence') }}" aria-live="polite">
+            <span class="presence-stat active-players" title="{{ __('ui.active_players') }}">
+                <i aria-hidden="true"></i><b data-active-players>—</b><small>{{ __('ui.active_players') }}</small>
+            </span>
+            <span class="presence-stat connected-accounts" title="{{ __('ui.connected_accounts') }}">
+                <i aria-hidden="true"></i><b data-connected-accounts>—</b><small>{{ __('ui.connected_accounts') }}</small>
+            </span>
+        </div>
         <div class="account-actions">
             @guest
                 <a href="{{ route('login') }}">{{ __('ui.login') }}</a>

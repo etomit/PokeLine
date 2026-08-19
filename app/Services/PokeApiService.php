@@ -10,6 +10,8 @@ use RuntimeException;
 
 class PokeApiService
 {
+    private const ALTERNATE_FORM_ID_START = 10000;
+
     private string $baseUrl;
 
     public function __construct()
@@ -23,13 +25,16 @@ class PokeApiService
 
         $locale = app()->getLocale();
 
-        return Cache::remember("pokeapi:pokemon:{$identifier}:{$locale}:v6", now()->addDays(14), function () use ($identifier, $locale) {
+        return Cache::remember("pokeapi:pokemon:{$identifier}:{$locale}:v7", now()->addDays(14), function () use ($identifier, $locale) {
             $response = Http::acceptJson()->timeout(15)->retry(2, 250)->get("{$this->baseUrl}/pokemon/{$identifier}");
             if ($response->failed()) {
                 throw new RuntimeException(__('ui.pokemon_not_found'));
             }
 
             $pokemon = $response->json();
+            if ((int) ($pokemon['id'] ?? 0) >= self::ALTERNATE_FORM_ID_START) {
+                throw new RuntimeException(__('ui.pokemon_form_not_selectable'));
+            }
             $speciesLabel = $this->localizedPokemonName((int) $pokemon['id'], $pokemon['name'], $locale);
             $moveRefs = $this->selectMoveRefs($pokemon['moves'] ?? []);
             $responses = Http::pool(fn (Pool $pool) => array_map(
@@ -142,7 +147,7 @@ class PokeApiService
 
     public function catalog(int $page = 1, string $search = '', int $perPage = 30): array
     {
-        $cacheKey = 'pokeapi:catalog:v2:'.app()->environment();
+        $cacheKey = 'pokeapi:catalog:v3:'.app()->environment();
         $entries = Cache::remember($cacheKey, now()->addDays(7), function () {
             $response = Http::acceptJson()->timeout(20)->retry(2, 300)->get("{$this->baseUrl}/pokemon", ['limit' => 2000, 'offset' => 0]);
             if ($response->failed()) {
@@ -159,7 +164,7 @@ class PokeApiService
                     'label' => ucfirst(str_replace('-', ' ', $entry['name'])),
                     'sprite' => "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{$id}.png",
                 ];
-            })->filter(fn ($entry) => $entry['id'] > 0)->values()->all();
+            })->filter(fn ($entry) => $entry['id'] > 0 && $entry['id'] < self::ALTERNATE_FORM_ID_START)->values()->all();
         });
 
         $search = strtolower(trim($search));

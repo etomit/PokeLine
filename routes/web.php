@@ -8,6 +8,7 @@ use App\Http\Controllers\TeamController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [HomeController::class, 'index'])->name('home');
+Route::get('/api/presence', [HomeController::class, 'presence'])->middleware('throttle:30,1')->name('presence');
 Route::post('/language', [AuthController::class, 'locale'])->name('locale');
 Route::get('/pokedex', [PokemonController::class, 'index'])->name('pokedex');
 Route::get('/api/pokedex', [PokemonController::class, 'catalog'])->middleware('throttle:90,1')->name('pokedex.catalog');

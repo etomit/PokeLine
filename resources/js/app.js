@@ -23,6 +23,39 @@ let soundVolume = storedVolume('pokeline_sound_volume', .75);
 let musicVolume = storedVolume('pokeline_music_volume', .65);
 const isEmbeddedGame = window.self !== window.top;
 
+const presenceCounters = document.querySelector('[data-presence-counters]');
+if (presenceCounters && !isEmbeddedGame) {
+    const activePlayers = presenceCounters.querySelector('[data-active-players]');
+    const connectedAccounts = presenceCounters.querySelector('[data-connected-accounts]');
+    let presenceLoading = false;
+
+    const refreshPresence = async () => {
+        if (presenceLoading || document.hidden) return;
+        presenceLoading = true;
+        try {
+            const response = await fetch(presenceCounters.dataset.presenceUrl, {
+                headers: {Accept: 'application/json'},
+                credentials: 'same-origin',
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const presence = await response.json();
+            activePlayers.textContent = Number(presence.active_players || 0).toLocaleString();
+            connectedAccounts.textContent = Number(presence.connected_accounts || 0).toLocaleString();
+            presenceCounters.classList.remove('is-unavailable');
+        } catch {
+            presenceCounters.classList.add('is-unavailable');
+        } finally {
+            presenceLoading = false;
+        }
+    };
+
+    refreshPresence();
+    window.setInterval(refreshPresence, 30000);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) refreshPresence();
+    });
+}
+
 const pageMusicTheme = document.querySelector('#battle-app')
     ? 'battle'
     : document.querySelector('#world-hub, .arcade-setup, .online-center-room, .online-team-page, .pokedex-page') ? 'menu' : null;
@@ -589,7 +622,9 @@ document.querySelectorAll('[data-team-input]').forEach(input => {
                 restoreItemControl(index);
                 slot.className = 'team-preview-slot invalid';
                 slot.dataset.state = 'invalid';
-                slot.innerHTML = `<span class="party-index">${index + 1}</span><div class="party-data"><b>${escapePreview(names[index])}</b><small>?</small></div>`;
+                slot.dataset.partySlot = index;
+                slot.innerHTML = `<button type="button" class="party-remove" data-remove-pokemon="${index}" aria-label="×">×</button><span class="party-index">${index + 1}</span><i class="party-ball" aria-hidden="true"></i><div class="party-data"><b>${escapePreview(names[index])}</b><small>?</small></div>`;
+                slot.querySelector('[data-remove-pokemon]').addEventListener('click', () => removePokemon(index));
             }
         });
         syncItems(names, entries);
