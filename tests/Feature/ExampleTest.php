@@ -31,7 +31,9 @@ class ExampleTest extends TestCase
         $this->withSession(['battle' => ['mode' => 'local', 'state' => [], 'pending' => null]])
             ->get('/battle')
             ->assertOk()
+            ->assertSee('arena-local local-mode', false)
             ->assertSee('local-controls')
+            ->assertDontSee('id="connection-label"', false)
             ->assertSee('music-toggle')
             ->assertSee('battle-music-volume')
             ->assertSee('battle-sound-volume');

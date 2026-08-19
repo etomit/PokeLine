@@ -795,13 +795,14 @@ if (battleApp) {
             els.result.hidden = true;
             return;
         }
-        const victory = spectator || state.winner === you;
+        const localMode = config.mode === 'local';
+        const victory = localMode || spectator || state.winner === you;
         startMusic(victory ? 'victory' : 'defeat');
         els.result.classList.toggle('victory', victory);
         els.result.classList.toggle('defeat', !victory);
         els.result.querySelector('[data-result-title]').textContent = spectator ? config.text.battleFinished : (victory ? config.text.victory : config.text.defeat);
         const winnerName = state.players?.[state.winner]?.name || '';
-        els.result.querySelector('[data-result-message]').textContent = spectator
+        els.result.querySelector('[data-result-message]').textContent = (spectator || localMode)
             ? config.text.winnerMessage.replace(':trainer', winnerName)
             : (victory ? config.text.victoryMessage : config.text.defeatMessage);
         const rewards = els.result.querySelector('[data-result-rewards]');
@@ -839,20 +840,29 @@ if (battleApp) {
             bindActions(els.moves);
         }
 
-        if ((data.mode || config.mode) === 'local') {
+        const localMode = (data.mode || config.mode) === 'local';
+        if (localMode) {
             battleApp.classList.add('local-mode');
             const firstForced = forcedKeys[0] || null;
             const p1Disabled = disabled || busy || animating || state.phase !== 'active' || (firstForced ? firstForced !== 'p1' : data.pending !== null);
             const p2Disabled = disabled || busy || animating || state.phase !== 'active' || (firstForced ? firstForced !== 'p2' : data.pending === null);
             els.localP1.innerHTML = controlsMarkup(state, 'p1', p1Disabled, firstForced === 'p1');
             els.localP2.innerHTML = controlsMarkup(state, 'p2', p2Disabled, firstForced === 'p2');
+            els.localP1.closest('section')?.classList.toggle('is-active', !p1Disabled);
+            els.localP2.closest('section')?.classList.toggle('is-active', !p2Disabled);
             bindActions(els.localP1);
             bindActions(els.localP2);
         }
 
         if (!preserveMessage) {
+            const localTurn = forcedKeys[0] || (data.pending === null ? 'p1' : 'p2');
+            const localPrompt = `${localTurn === 'p1' ? config.text.playerOne : config.text.playerTwo} — ${forcedKeys.length ? config.text.chooseReplacement : config.text.choose}`;
             showMessage(state.phase === 'finished'
-                ? (spectator ? config.text.battleFinished : (state.winner === you ? config.text.victory : config.text.defeat))
+                ? (localMode
+                    ? config.text.winnerMessage.replace(':trainer', state.players?.[state.winner]?.name || '')
+                    : spectator ? config.text.battleFinished : (state.winner === you ? config.text.victory : config.text.defeat))
+                : localMode
+                    ? localPrompt
                 : spectator
                     ? (state.last_events?.at(-1)?.text || config.text.spectating)
                 : ownForced

@@ -24,6 +24,8 @@
             'unavailable' => __('ui.websocket_unavailable'),
             'opponentDisconnected' => __('ui.opponent_disconnected'),
             'autoWinCountdown' => __('ui.auto_win_countdown'),
+            'playerOne' => __('ui.player_one'),
+            'playerTwo' => __('ui.player_two'),
         ];
         $spectator = $kind === 'spectator';
         $stateUrl = match ($kind) {

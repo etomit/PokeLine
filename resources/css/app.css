@@ -373,10 +373,15 @@ body:has(.world-hub) .hub-map{object-fit:contain}
 .arena-wrap{width:min(1320px,100%);margin-inline:auto!important}
 .battle-screen{width:100%;height:auto;min-height:0;aspect-ratio:16/9;background-size:cover}
 .sprite-platform{width:33%;height:39%}
-.sprite-platform img{align-self:end;width:82%;height:108%;max-width:none;max-height:none;margin:0 auto;object-fit:contain;object-position:center bottom}
+.sprite-platform img{position:relative;left:var(--battle-sprite-x,0);top:var(--battle-sprite-y,0);align-self:end;width:82%;height:108%;max-width:none;max-height:none;margin:0 auto;object-fit:contain;object-position:center bottom}
 .opponent-platform{top:9%;right:13%}
-.player-platform{bottom:7%;left:7%;width:34%;height:43%}
-.arena-online .opponent-platform{top:9%;right:13%}
+.player-platform{bottom:20%;left:13%;width:34%;height:43%}
+.arena-solo .opponent-platform{right:14%}
+.arena-solo .player-platform{bottom:20%;left:13%}
+.arena-local .opponent-platform{right:11%}
+.arena-local .player-platform{bottom:27%;left:10%}
+.arena-online .opponent-platform{top:9%;right:12%}
+.arena-online .player-platform{bottom:20%;left:13%}
 .arena-solo .battle-screen{background-image:linear-gradient(rgba(155,188,15,.10),rgba(15,56,15,.14)),url('/images/arena-solo-v2.png')}
 .arena-local .battle-screen{background-image:url('/images/arena-local-v2.png')}
 .arena-online .battle-screen{background-image:url('/images/arena-online-v3.png')}
@@ -403,6 +408,21 @@ body:has(.world-hub) .hub-map{object-fit:contain}
 .switch-control.is-open .forced-switch{position:static;display:flex;max-height:120px;border:0;border-radius:0;box-shadow:none;overflow-x:auto;overflow-y:hidden}
 @media(min-width:701px){.battle-app:not(.local-mode) .command-panel{height:142px}.battle-app:not(.local-mode) .battle-message,.battle-app:not(.local-mode) .command-panel>.moves-grid{height:100%;min-height:0}.battle-app:not(.local-mode) .move-button{min-height:0}}
 
+/* Split-screen keeps one compact command area per player and never mimics online waiting. */
+.local-mode .command-panel{display:block;border-bottom:0}
+.local-mode .battle-message{min-height:44px;padding:9px 14px;border:0;text-align:center}
+.local-mode .local-controls{position:relative;z-index:22;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:5px;border-width:5px}
+.local-mode .local-controls section{min-width:0;border:3px solid transparent;overflow:visible;transition:filter .18s,opacity .18s}
+.local-mode .local-controls section:not(.is-active){filter:saturate(.55);opacity:.68}
+.local-mode .local-controls section.is-active{border-color:#f3b13b;box-shadow:inset 0 0 0 2px #fff}
+.local-mode .local-controls section:nth-child(2).is-active{border-color:#58a9eb}
+.local-mode .local-controls section>strong{padding:5px 10px;text-align:center;font-size:.66rem}
+.local-mode .local-controls .moves-grid{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,47px) auto}
+.local-mode .local-controls .move-button{min-width:0;min-height:47px;padding:5px 8px;font-size:.68rem}
+.local-mode .local-controls .move-button>span{font-size:.74rem}
+.local-mode .local-controls .move-button small{font-size:.52rem;white-space:nowrap}
+.local-mode .local-controls .switch-toggle{min-height:28px;font-size:.6rem}
+
 /* Pokémon type chips shown immediately above the HP gauge. */
 .type-tags [class^="type-"],.type-tags [class*=" type-"]{border-color:color-mix(in srgb,var(--type-color) 72%,#161827);color:#fff;background:var(--type-color);text-shadow:1px 1px rgba(0,0,0,.45)}
 .type-tags .type-normal{--type-color:#77775f}.type-tags .type-fire{--type-color:#d3542f}.type-tags .type-water{--type-color:#3976cf}.type-tags .type-electric{--type-color:#d3ad16;color:#222;text-shadow:none}.type-tags .type-grass{--type-color:#4c9a3d}.type-tags .type-ice{--type-color:#4eaeb8}.type-tags .type-fighting{--type-color:#a52d27}.type-tags .type-poison{--type-color:#873b8d}.type-tags .type-ground{--type-color:#a97b3c}.type-tags .type-flying{--type-color:#7668bd}.type-tags .type-psychic{--type-color:#ca3d70}.type-tags .type-bug{--type-color:#788d18}.type-tags .type-rock{--type-color:#8c772a}.type-tags .type-ghost{--type-color:#584681}.type-tags .type-dragon{--type-color:#5432ad}.type-tags .type-dark{--type-color:#50433e}.type-tags .type-steel{--type-color:#70778e}.type-tags .type-fairy{--type-color:#c7668d}
@@ -410,8 +430,8 @@ body:has(.world-hub) .hub-map{object-fit:contain}
 
 /* Type-specific projectiles travel between the two fixed combat positions. */
 .attack-effects{position:absolute;z-index:14;inset:0;overflow:hidden;pointer-events:none}
-.attack-effect{position:absolute;inset:0;--effect-color:#fff;--effect-glow:#fff;--effect-symbol:"✦";--start-x:27%;--start-y:76%;--end-x:73%;--end-y:35%}
-.attack-effect.from-opponent{--start-x:73%;--start-y:35%;--end-x:27%;--end-y:76%}
+.attack-effect{position:absolute;inset:0;--effect-color:#fff;--effect-glow:#fff;--effect-symbol:"✦";--start-x:30%;--start-y:66%;--end-x:71%;--end-y:34%}
+.attack-effect.from-opponent{--start-x:71%;--start-y:34%;--end-x:30%;--end-y:66%}
 .attack-effect::before{content:var(--effect-symbol);position:absolute;left:var(--start-x);top:var(--start-y);display:grid;width:clamp(30px,4.8vw,62px);height:clamp(30px,4.8vw,62px);place-items:center;border:3px solid color-mix(in srgb,var(--effect-color) 75%,white);border-radius:50%;color:#fff;background:radial-gradient(circle,var(--effect-color),color-mix(in srgb,var(--effect-color) 65%,transparent));box-shadow:0 0 9px var(--effect-glow),0 0 28px var(--effect-glow);font-size:clamp(22px,3.5vw,48px);line-height:1;text-shadow:0 2px 3px #111;transform:translate(-50%,-50%);animation:typed-projectile .72s cubic-bezier(.18,.72,.24,1) forwards}
 .attack-effect i{position:absolute;left:var(--end-x);top:var(--end-y);width:9px;height:9px;border-radius:50%;background:var(--effect-color);box-shadow:0 0 9px var(--effect-glow);opacity:0;animation:typed-spark .35s ease-out .46s forwards}
 .attack-effect i:nth-child(2){--spark-x:34px;--spark-y:-24px}.attack-effect i:nth-child(3){--spark-x:-36px;--spark-y:-18px}.attack-effect i:nth-child(4){--spark-x:31px;--spark-y:27px}.attack-effect i:nth-child(5){--spark-x:-29px;--spark-y:31px}.attack-effect i:nth-child(6){--spark-x:2px;--spark-y:-42px}
@@ -425,6 +445,7 @@ body:has(.world-hub) .hub-map{object-fit:contain}
     .hud-name{font-size:.72rem}.type-tags span{font-size:.48rem}.hp-track{height:11px}
     .command-panel{grid-template-columns:1fr}.battle-message{min-height:62px;padding:10px 12px;border-right:0;border-bottom:3px solid #e19a2d;font-size:.78rem}
     .move-button{min-height:45px;padding:6px 8px}.move-button>span{font-size:.75rem}.move-button small{font-size:.52rem}
+    .local-mode .local-controls{grid-template-columns:1fr}
 }
 
 /* Decorative technical captions are omitted to keep screens focused. */
