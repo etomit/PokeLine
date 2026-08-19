@@ -43,7 +43,7 @@
             <form action="{{ route('battle.online.cancel', $battle) }}" method="post">@csrf @method('DELETE')<button class="online-danger" type="submit">{{ __('ui.cancel_search') }}</button></form>
         </div>
     @endif
-    <div id="battle-app" class="battle-app arena-{{ $mode }} {{ $kind === 'online' && $battle->status === 'waiting' ? 'is-waiting' : '' }} {{ $spectator ? 'is-spectator' : '' }}"
+    <div id="battle-app" class="battle-app arena-{{ $mode }} {{ $mode === 'local' ? 'local-mode' : '' }} {{ $kind === 'online' && $battle->status === 'waiting' ? 'is-waiting' : '' }} {{ $spectator ? 'is-spectator' : '' }}"
          data-kind="{{ $kind }}"
          data-mode="{{ $mode }}"
          data-state-url="{{ $stateUrl }}"
@@ -75,8 +75,8 @@
             <div class="scanlines"></div>
             <div id="attack-effects" class="attack-effects" aria-hidden="true"></div>
             <div id="opponent-hud" class="combatant-hud opponent"></div>
-            <div class="sprite-platform opponent-platform"><img id="opponent-sprite" alt=""></div>
-            <div class="sprite-platform player-platform"><img id="player-sprite" alt=""></div>
+            <div class="sprite-platform opponent-platform"><img id="opponent-sprite" crossorigin="anonymous" alt=""></div>
+            <div class="sprite-platform player-platform"><img id="player-sprite" crossorigin="anonymous" alt=""></div>
             <div id="player-hud" class="combatant-hud player"></div>
         </div>
         <div class="command-panel"><div id="battle-message" class="battle-message">{{ __('ui.choose_attack') }}</div><div id="moves" class="moves-grid"></div></div>

@@ -398,7 +398,7 @@ document.querySelectorAll('[data-pokedex-browser]').forEach(browser => {
 
 const pokemonPreviewCache = new Map();
 const partySpriteOffsetCache = new Map();
-const centerPartySprite = async image => {
+const measureSpriteOffset = async image => {
     if (!image?.src) return;
 
     let measured = partySpriteOffsetCache.get(image.src);
@@ -427,22 +427,39 @@ const centerPartySprite = async image => {
                     }
                 }
 
-                if (maxX < minX || maxY < minY) return {x: 0, y: 0};
+                if (maxX < minX || maxY < minY) return {x: 0, y: 0, bottom: 0};
 
                 return {
                     x: 50 - ((minX + maxX) / 2 / canvas.width * 100),
                     y: 50 - ((minY + maxY) / 2 / canvas.height * 100),
+                    bottom: (canvas.height - 1 - maxY) / canvas.height * 100,
                 };
             } catch {
-                return {x: 0, y: 0};
+                return {x: 0, y: 0, bottom: 0};
             }
         })();
         partySpriteOffsetCache.set(image.src, measured);
     }
 
-    const offset = await measured;
+    return measured;
+};
+const centerPartySprite = async image => {
+    const offset = await measureSpriteOffset(image);
+    if (!offset) return;
     image.style.setProperty('--party-sprite-x', `${offset.x.toFixed(2)}%`);
     image.style.setProperty('--party-sprite-y', `${offset.y.toFixed(2)}%`);
+};
+const centerBattleSprite = async image => {
+    const source = image?.src;
+    const offset = await measureSpriteOffset(image);
+    if (!offset || image.src !== source) return;
+
+    requestAnimationFrame(() => {
+        if (image.src !== source) return;
+        const renderedSize = Math.min(image.clientWidth, image.clientHeight);
+        image.style.setProperty('--battle-sprite-x', `${(offset.x / 100 * renderedSize).toFixed(2)}px`);
+        image.style.setProperty('--battle-sprite-y', `${(offset.bottom / 100 * renderedSize).toFixed(2)}px`);
+    });
 };
 document.querySelectorAll('[data-team-input]').forEach(input => {
     const preview = document.querySelector(`[data-team-preview="${input.id}"]`);
@@ -694,7 +711,12 @@ if (battleApp) {
         const availableHeight = Math.max(220, window.innerHeight - arenaWrap.getBoundingClientRect().top - nonStageHeight - 12);
         const fittedWidth = Math.min(availableWidth, availableHeight * (16 / 9));
         arenaWrap.style.width = `${Math.max(Math.min(availableWidth, 360), fittedWidth)}px`;
-        if (!secondPass) requestAnimationFrame(() => fitBattleLayout(true));
+        if (!secondPass) {
+            requestAnimationFrame(() => fitBattleLayout(true));
+        } else {
+            centerBattleSprite(els.playerSprite);
+            centerBattleSprite(els.opponentSprite);
+        }
     };
 
     const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -763,6 +785,7 @@ if (battleApp) {
         const sprite = spriteElementFor(key, you);
         sprite.src = spriteFor(state, key, you);
         sprite.alt = pokemon.label;
+        centerBattleSprite(sprite);
         sprite.classList.remove('faint-out', 'switch-in', 'is-fainted');
         if (pokemon.current_hp <= 0) sprite.classList.add('is-fainted');
         hudFor(key, you).innerHTML = hud(pokemon);
