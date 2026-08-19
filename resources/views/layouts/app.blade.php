@@ -3,6 +3,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#232038">
+    <link rel="icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="reverb-key" content="{{ config('broadcasting.connections.reverb.key') }}">
     <meta name="reverb-host" content="{{ config('broadcasting.connections.reverb.client.host') }}">
@@ -51,7 +53,6 @@
     </dialog>
     <dialog id="pokedex-dialog" class="pokedex-dialog">
         <form method="dialog" class="dialog-close"><button aria-label="{{ __('ui.close') }}">×</button></form>
-        <p class="eyebrow">POKÉAPI // NATIONAL DATA</p>
         <h2>{{ __('ui.choose_from_pokedex') }}</h2>
         <div class="pokedex-device compact" data-pokedex-browser data-catalog-url="{{ route('pokedex.catalog') }}">
             <div class="pokedex-toolbar"><input type="search" data-pokedex-search placeholder="{{ __('ui.search_pokemon') }}"><button type="button" class="pixel-button" data-pokedex-submit>{{ __('ui.search') }}</button></div>
@@ -66,7 +67,6 @@
         @endif
         @yield('content')
     </main>
-    <footer>POKÉLINE // POKEAPI // MVC</footer>
 </div>
 @stack('scripts')
 </body>

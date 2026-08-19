@@ -22,13 +22,13 @@
         { "id": "bordure-gauche", "x1": 0, "x2": 6, "y1": 0, "y2": 100 },
         { "id": "bordure-droite", "x1": 94, "x2": 100, "y1": 0, "y2": 100 },
         { "id": "batiment-solo", "x1": 8, "x2": 32, "y1": 8, "y2": 32 },
-        { "id": "batiment-local", "x1": 66, "x2": 88, "y1": 16, "y2": 40 },
-        { "id": "batiment-online", "x1": 10, "x2": 31, "y1": 58, "y2": 76 },
-        { "id": "banc-haut", "x1": 36, "x2": 42, "y1": 19, "y2": 26 },
+        { "id": "batiment-local", "x1": 66, "x2": 88, "y1": 16, "y2": 42 },
+        { "id": "batiment-online", "x1": 10, "x2": 31, "y1": 58, "y2": 82 },
+        { "id": "banc-haut", "x1": 36, "x2": 42, "y1": 14, "y2": 20 },
         { "id": "panneau", "x1": 54, "x2": 59, "y1": 30, "y2": 38 },
-        { "id": "lampadaire-gauche", "x1": 41, "x2": 45, "y1": 53, "y2": 71 },
-        { "id": "lampadaire-droit", "x1": 53, "x2": 57, "y1": 53, "y2": 71 },
+        { "id": "lampadaire-gauche", "x1": 41, "x2": 45, "y1": 54, "y2": 71 },
+        { "id": "lampadaire-droit", "x1": 53, "x2": 57, "y1": 54, "y2": 71 },
         { "id": "banc-bas", "x1": 66, "x2": 73, "y1": 64, "y2": 72 },
-        { "id": "mare", "x1": 75, "x2": 88, "y1": 64, "y2": 81 }
+        { "id": "mare", "x1": 75, "x2": 88, "y1": 64, "y2": 87 }
     ]
 }

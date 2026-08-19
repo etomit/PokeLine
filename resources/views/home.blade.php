@@ -11,9 +11,9 @@
     <button type="button" class="map-settings-button" id="settings-open" aria-label="{{ __('ui.settings') }}" title="{{ __('ui.settings') }} (P)">
         <img src="{{ asset('images/settings-icon.png') }}" alt=""><kbd>P</kbd>
     </button>
-    <button class="map-destination destination-solo" data-destination="solo"><strong><span>01</span>{{ __('ui.solo') }}</strong></button>
-    <button class="map-destination destination-local" data-destination="local"><strong><span>02</span>{{ __('ui.local') }}</strong></button>
-    <button class="map-destination destination-online" data-destination="online"><strong><span>03</span>{{ __('ui.online') }}</strong></button>
+    <button class="map-destination destination-solo" data-destination="solo"><strong>{{ __('ui.solo') }}</strong></button>
+    <button class="map-destination destination-local" data-destination="local"><strong>{{ __('ui.local') }}</strong></button>
+    <button class="map-destination destination-online" data-destination="online"><strong>{{ __('ui.online') }}</strong></button>
     <div id="hub-character" class="hub-character face-up" role="img" aria-label="{{ __('ui.trainer') }}"></div>
     <div id="hub-prompt" class="hub-prompt" aria-live="polite">{{ __('ui.walk_hint') }}</div>
     <dialog id="game-space-dialog" class="game-space-dialog" aria-label="{{ __('ui.game_space') }}">

@@ -73,6 +73,7 @@
         </div>
         <div class="battle-screen">
             <div class="scanlines"></div>
+            <div id="attack-effects" class="attack-effects" aria-hidden="true"></div>
             <div id="opponent-hud" class="combatant-hud opponent"></div>
             <div class="sprite-platform opponent-platform"><img id="opponent-sprite" alt=""></div>
             <div class="sprite-platform player-platform"><img id="player-sprite" alt=""></div>

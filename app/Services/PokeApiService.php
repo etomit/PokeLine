@@ -142,7 +142,8 @@ class PokeApiService
 
     public function catalog(int $page = 1, string $search = '', int $perPage = 30): array
     {
-        $entries = Cache::remember('pokeapi:catalog:v1', now()->addDays(7), function () {
+        $cacheKey = 'pokeapi:catalog:v2:'.app()->environment();
+        $entries = Cache::remember($cacheKey, now()->addDays(7), function () {
             $response = Http::acceptJson()->timeout(20)->retry(2, 300)->get("{$this->baseUrl}/pokemon", ['limit' => 2000, 'offset' => 0]);
             if ($response->failed()) {
                 throw new RuntimeException(__('ui.pokedex_unavailable'));

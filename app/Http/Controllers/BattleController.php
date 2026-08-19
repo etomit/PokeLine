@@ -19,7 +19,22 @@ use Throwable;
 
 class BattleController extends Controller
 {
-    private const STARTERS = ['venusaur', 'charizard', 'blastoise', 'pikachu', 'alakazam', 'gengar', 'dragonite', 'tyranitar', 'lucario', 'garchomp'];
+    /**
+     * A broad pool keeps solo battles varied without relying on one recurring squad.
+     * All entries use stable PokeAPI identifiers (no alternate forms).
+     */
+    private const AI_POOL = [
+        'venusaur', 'charizard', 'blastoise', 'raichu', 'nidoking', 'nidoqueen',
+        'arcanine', 'machamp', 'alakazam', 'gengar', 'exeggutor', 'rhydon',
+        'starmie', 'scyther', 'gyarados', 'lapras', 'snorlax', 'dragonite',
+        'meganium', 'typhlosion', 'feraligatr', 'ampharos', 'crobat', 'heracross',
+        'houndoom', 'kingdra', 'donphan', 'tyranitar', 'sceptile', 'blaziken',
+        'swampert', 'gardevoir', 'breloom', 'aggron', 'flygon', 'milotic',
+        'metagross', 'salamence', 'torterra', 'infernape', 'empoleon', 'staraptor',
+        'luxray', 'roserade', 'floatzel', 'drifblim', 'lopunny', 'mismagius',
+        'honchkrow', 'garchomp', 'lucario', 'toxicroak', 'weavile', 'magnezone',
+        'electivire', 'magmortar', 'togekiss', 'glaceon', 'mamoswine', 'gallade',
+    ];
 
     public function setup(string $mode)
     {
@@ -41,7 +56,7 @@ class BattleController extends Controller
         ]);
         $firstIds = $this->parseTeam($data['team1']);
         $secondIds = $mode === 'solo'
-            ? collect(self::STARTERS)->shuffle()->take(count($firstIds))->all()
+            ? $this->generateAiTeam($request, count($firstIds))
             : $this->parseTeam($data['team2']);
         $first = array_map(fn ($id) => $pokeApi->pokemon($id), $firstIds);
         $second = array_map(fn ($id) => $pokeApi->pokemon($id), $secondIds);
@@ -529,6 +544,39 @@ class BattleController extends Controller
         }
 
         return $ids;
+    }
+
+    /**
+     * Generate a fresh AI squad and avoid serving the exact previous squad again.
+     * With 60 candidates, even a full team has tens of millions of combinations.
+     *
+     * @return array<int, string>
+     */
+    private function generateAiTeam(Request $request, int $size): array
+    {
+        $previousSignature = $request->session()->get('battle_last_ai_team');
+        $team = [];
+
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $team = collect(self::AI_POOL)
+                ->shuffle()
+                ->take($size)
+                ->values()
+                ->all();
+
+            $signature = collect($team)->sort()->implode('|');
+
+            if ($signature !== $previousSignature) {
+                break;
+            }
+        }
+
+        $request->session()->put(
+            'battle_last_ai_team',
+            collect($team)->sort()->implode('|'),
+        );
+
+        return $team;
     }
 
     private function equipSandboxItems(array $team, array $slugs): array

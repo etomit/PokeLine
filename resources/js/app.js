@@ -1,4 +1,11 @@
 import './bootstrap';
+import {
+    midiMusicThemes,
+    playGameSound,
+    setMidiMusicVolume,
+    startMidiMusic,
+    stopMidiMusic,
+} from './audio';
 
 const settingsDialog = document.querySelector('#settings-dialog');
 const settingsButton = document.querySelector('#settings-open');
@@ -19,190 +26,29 @@ const isEmbeddedGame = window.self !== window.top;
 const pageMusicTheme = document.querySelector('#battle-app')
     ? 'battle'
     : document.querySelector('#world-hub, .arcade-setup, .online-center-room, .online-team-page, .pokedex-page') ? 'menu' : null;
-const musicThemes = {
-    menu: {
-        tempo: 135,
-        drumStyle: 'adventure',
-        lead: [76, 79, 84, 79, 77, 81, 84, 88, 86, 84, 81, 79, 81, 84, 88, 91, 79, 83, 86, 83, 81, 84, 88, 84, 79, 81, 83, 86, 88, 86, 84, 81],
-        harmony: [67, 72, 76, 72, 69, 72, 77, 72, 71, 74, 79, 74, 72, 76, 79, 76, 71, 74, 79, 74, 72, 76, 81, 76, 67, 72, 76, 72, 69, 74, 77, 72],
-        bass: [48, 55, 48, 55, 53, 60, 53, 60, 55, 62, 55, 62, 57, 64, 55, 62, 52, 59, 52, 59, 53, 60, 55, 62, 48, 55, 52, 59, 53, 60, 55, 48],
-    },
-    battle: {
-        tempo: 178,
-        drumStyle: 'drive',
-        lead: [76, 79, 83, 88, 86, 83, 81, 79, 76, 79, 84, 91, 88, 86, 84, 81, 78, 81, 85, 90, 88, 85, 83, 81, 79, 83, 86, 95, 93, 90, 86, 83],
-        harmony: [67, 71, 74, 79, 77, 74, 72, 71, 67, 72, 76, 79, 76, 74, 72, 69, 69, 73, 76, 81, 78, 76, 73, 69, 71, 74, 79, 83, 81, 78, 74, 71],
-        bass: [40, 40, 47, 40, 43, 43, 50, 43, 45, 45, 52, 45, 47, 47, 54, 47, 42, 42, 49, 42, 45, 45, 52, 45, 47, 47, 54, 52, 50, 47, 45, 43],
-    },
-    victory: {
-        tempo: 156,
-        drumStyle: 'fanfare',
-        lead: [72, 76, 79, 84, 79, 84, 88, 91, 88, 91, 96, 91, 88, 84, 91, 96],
-        harmony: [64, 67, 72, 76, 72, 76, 79, 84, 79, 84, 88, 84, 79, 76, 84, 88],
-        bass: [48, 55, 52, 60, 55, 60, 64, 60, 55, 62, 60, 64, 55, 60, 64, 72],
-    },
-    defeat: {
-        tempo: 92,
-        drumStyle: 'slow',
-        lead: [72, null, 71, null, 67, null, 64, null, 62, null, 60, null, 59, 55, 52, null],
-        harmony: [64, null, 62, null, 59, null, 55, null, 53, null, 52, null, 50, 47, 43, null],
-        bass: [48, null, 47, null, 43, null, 40, null, 38, null, 36, null, 35, null, 31, null],
-    },
-};
-let musicContext = null;
-let musicMaster = null;
-let musicTimer = null;
-let musicStep = 0;
-let activeMusicTheme = null;
 let musicUnlocked = Boolean(navigator.userActivation?.hasBeenActive);
+let embeddedMusicTheme = null;
 
 const currentMusicTheme = () => {
+    if (embeddedMusicTheme) return embeddedMusicTheme;
     if (pageMusicTheme !== 'battle') return pageMusicTheme;
     const result = document.querySelector('#battle-result');
-    if (!result || result.hidden) return 'battle';
-    return result.classList.contains('victory') ? 'victory' : 'defeat';
+    if (result && !result.hidden) return result.classList.contains('victory') ? 'victory' : 'defeat';
+    const battle = document.querySelector('#battle-app');
+    if (['online', 'spectator'].includes(battle?.dataset.kind)) return 'battle-online';
+    return battle?.dataset.mode === 'local' ? 'battle-local' : 'battle-solo';
 };
 
-const noteFrequency = midi => 440 * (2 ** ((midi - 69) / 12));
-const playMusicNote = (context, output, midi, start, duration, waveform, volume, detune = 0) => {
-    if (midi === null || midi === undefined) return;
-    const oscillator = context.createOscillator();
-    const envelope = context.createGain();
-    oscillator.type = waveform;
-    oscillator.frequency.setValueAtTime(noteFrequency(midi), start);
-    oscillator.detune.setValueAtTime(detune, start);
-    envelope.gain.setValueAtTime(0.0001, start);
-    envelope.gain.exponentialRampToValueAtTime(volume, start + 0.018);
-    envelope.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-    oscillator.connect(envelope).connect(output);
-    oscillator.start(start);
-    oscillator.stop(start + duration + 0.025);
-};
-
-const noiseBuffer = context => {
-    if (context.__pokelineNoise) return context.__pokelineNoise;
-    const buffer = context.createBuffer(1, context.sampleRate, context.sampleRate);
-    const channel = buffer.getChannelData(0);
-    for (let index = 0; index < channel.length; index++) channel[index] = Math.random() * 2 - 1;
-    context.__pokelineNoise = buffer;
-    return buffer;
-};
-
-const playNoise = (context, output, start, duration, volume, frequency) => {
-    const source = context.createBufferSource();
-    const filter = context.createBiquadFilter();
-    const envelope = context.createGain();
-    source.buffer = noiseBuffer(context);
-    filter.type = 'highpass';
-    filter.frequency.setValueAtTime(frequency, start);
-    envelope.gain.setValueAtTime(volume, start);
-    envelope.gain.exponentialRampToValueAtTime(.0001, start + duration);
-    source.connect(filter).connect(envelope).connect(output);
-    source.start(start);
-    source.stop(start + duration);
-};
-
-const playKick = (context, output, start, volume = .12) => {
-    const oscillator = context.createOscillator();
-    const envelope = context.createGain();
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(145, start);
-    oscillator.frequency.exponentialRampToValueAtTime(42, start + .11);
-    envelope.gain.setValueAtTime(volume, start);
-    envelope.gain.exponentialRampToValueAtTime(.0001, start + .14);
-    oscillator.connect(envelope).connect(output);
-    oscillator.start(start);
-    oscillator.stop(start + .15);
-};
-
-const playChiptuneDrums = (context, output, start, index, style) => {
-    if (style === 'drive') {
-        if (index % 4 === 0) playKick(context, output, start, .14);
-        if (index % 4 === 2) playNoise(context, output, start, .11, .07, 1250);
-        playNoise(context, output, start, .035, index % 2 ? .018 : .027, 5200);
-        return;
-    }
-    if (style === 'adventure') {
-        if (index % 8 === 0 || index % 8 === 3) playKick(context, output, start, index % 8 === 0 ? .12 : .075);
-        if (index % 8 === 4) playNoise(context, output, start, .095, .052, 1450);
-        playNoise(context, output, start, .028, index % 2 ? .014 : .024, 5800);
-        return;
-    }
-    if (style === 'light') {
-        if (index % 8 === 0) playKick(context, output, start, .08);
-        if (index % 8 === 4) playNoise(context, output, start, .09, .035, 1600);
-        if (index % 2 === 0) playNoise(context, output, start, .025, .012, 6000);
-        return;
-    }
-    if (style === 'fanfare') {
-        if (index % 4 === 0) playKick(context, output, start, .1);
-        if (index % 4 === 2) playNoise(context, output, start, .08, .03, 2200);
-        return;
-    }
-    if (index % 8 === 0) playKick(context, output, start, .065);
-};
-
-const stopMusic = () => {
-    const contextToClose = musicContext;
-    const masterToFade = musicMaster;
-    if (musicTimer) window.clearInterval(musicTimer);
-    musicTimer = null;
-    musicContext = null;
-    musicMaster = null;
-    activeMusicTheme = null;
-    musicStep = 0;
-    if (!contextToClose || contextToClose.state === 'closed') return;
-    const now = contextToClose.currentTime;
-    masterToFade?.gain.cancelScheduledValues(now);
-    masterToFade?.gain.setValueAtTime(Math.max(masterToFade.gain.value, 0.0001), now);
-    masterToFade?.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
-    window.setTimeout(() => contextToClose.close().catch(() => {}), 150);
-};
+const stopMusic = stopMidiMusic;
 
 const startMusic = async themeName => {
     if (isEmbeddedGame) {
         window.parent.postMessage({type: 'pokeline:music-theme', theme: themeName}, window.location.origin);
         return;
     }
-    if (!musicEnabled || !musicUnlocked || !musicThemes[themeName] || document.hidden) return;
-    if (activeMusicTheme === themeName && musicContext) {
-        if (musicContext.state === 'suspended') await musicContext.resume().catch(() => {});
-        return;
-    }
-    stopMusic();
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) return;
-    const context = new AudioContextClass();
-    const master = context.createGain();
-    const compressor = context.createDynamicsCompressor();
-    compressor.threshold.value = -18;
-    compressor.knee.value = 10;
-    compressor.ratio.value = 5;
-    master.gain.value = Math.max(.0001, musicVolume);
-    master.connect(compressor).connect(context.destination);
-    musicContext = context;
-    musicMaster = master;
-    activeMusicTheme = themeName;
-    const theme = musicThemes[themeName];
-    const stepDuration = 60 / theme.tempo / 2;
-    const scheduleStep = () => {
-        if (context !== musicContext || master !== musicMaster) return;
-        const start = context.currentTime + 0.025;
-        const index = musicStep % theme.lead.length;
-        playMusicNote(context, master, theme.lead[index], start, stepDuration * .78, 'square', .075);
-        playMusicNote(context, master, theme.lead[index], start, stepDuration * .68, 'square', .018, 7);
-        playMusicNote(context, master, theme.harmony[index], start, stepDuration * .7, 'square', .028, -5);
-        playMusicNote(context, master, theme.bass[index], start, stepDuration * .92, 'triangle', .105);
-        if (theme.bass[index] !== null && theme.bass[index] !== undefined) {
-            const arpeggio = [12, 19, 24, 19][index % 4];
-            playMusicNote(context, master, theme.bass[index] + arpeggio, start, stepDuration * .42, 'square', .016);
-        }
-        playChiptuneDrums(context, master, start, index, theme.drumStyle);
-        musicStep = (musicStep + 1) % theme.lead.length;
-    };
-    await context.resume().catch(() => {});
-    scheduleStep();
-    musicTimer = window.setInterval(scheduleStep, stepDuration * 1000);
+    if (!musicEnabled || !musicUnlocked || !midiMusicThemes[themeName] || document.hidden) return;
+    setMidiMusicVolume(musicVolume);
+    await startMidiMusic(themeName);
 };
 
 const updateMusicPreference = enabled => {
@@ -230,9 +76,7 @@ const updateMusicVolume = value => {
         musicVolumeSetting.value = String(Math.round(musicVolume * 100));
         musicVolumeSetting.nextElementSibling.value = `${Math.round(musicVolume * 100)}%`;
     }
-    if (musicMaster && musicContext?.state !== 'closed') {
-        musicMaster.gain.setTargetAtTime(Math.max(.0001, musicVolume), musicContext.currentTime, .025);
-    }
+    setMidiMusicVolume(musicVolume);
 };
 
 const updateSoundVolume = value => {
@@ -242,6 +86,10 @@ const updateSoundVolume = value => {
         soundVolumeSetting.value = String(Math.round(soundVolume * 100));
         soundVolumeSetting.nextElementSibling.value = `${Math.round(soundVolume * 100)}%`;
     }
+};
+
+const playInterfaceSound = name => {
+    if (soundEnabled) playGameSound(name, soundVolume);
 };
 
 if (pageMusicTheme) {
@@ -292,6 +140,29 @@ if (settingsDialog && settingsButton) {
     });
 }
 
+const interfaceSoundFor = control => {
+    if (control.matches('.party-remove')) return 'remove';
+    if (control.matches('[data-dialog-close], [data-game-close], .battle-forfeit, .online-danger')) return 'cancel';
+    if (control.matches('#settings-open, .settings-button')) return 'settings';
+    if (control.matches('[data-pokedex-submit]')) return 'search';
+    if (control.matches('[data-pokedex-prev], [data-pokedex-next]')) return 'page';
+    if (control.matches('.pokedex-card, [data-pokemon]')) return 'pokedex-entry';
+    if (control.matches('.pokedex-picker-button, .party-add-button')) return 'party-add';
+    if (control.matches('[data-switch-toggle]')) return 'toggle';
+    if (control.matches('[data-move], [data-switch]')) return 'battle-command';
+    if (control.matches('a')) return 'navigate';
+    return 'confirm';
+};
+document.addEventListener('click', event => {
+    const control = event.target.closest('button, a');
+    if (!control || control.matches(':disabled, [aria-disabled="true"], [data-destination]')) return;
+    playInterfaceSound(interfaceSoundFor(control));
+});
+document.addEventListener('change', event => {
+    if (event.target.matches('input[type="checkbox"], input[type="radio"]')) playInterfaceSound('toggle');
+    else if (event.target.matches('select, input[type="range"]')) playInterfaceSound('select');
+});
+
 const hub = document.querySelector('#world-hub');
 if (hub) {
     const character = document.querySelector('#hub-character');
@@ -304,7 +175,6 @@ if (hub) {
     };
     let position = {...hubConfig.spawn};
     let direction = 'up';
-    let frame = 0;
     let near = null;
     const gameDialog = document.querySelector('#game-space-dialog');
     const gameFrame = document.querySelector('#game-space-frame');
@@ -328,34 +198,45 @@ if (hub) {
 
     const displayName = key => document.querySelector(`[data-destination="${key}"]`)?.textContent.replace(/^\s*\d+/, '').trim() || key;
     const openGame = key => {
+        playInterfaceSound('open');
         gameFrame.src = destinations[key].url;
         gameDialog.showModal();
     };
     const update = () => {
         character.style.left = `${position.x}%`;
         character.style.top = `${position.y}%`;
-        character.className = `hub-character face-${direction}${frame ? ` walk-${frame}` : ''}`;
+        const characterClass = `hub-character face-${direction}${pressedDirections.length ? ' is-walking' : ''}`;
+        if (character.className !== characterClass) character.className = characterClass;
         let closest = null;
         let closestDistance = Infinity;
         Object.entries(destinations).forEach(([key, destination]) => {
             const distance = Math.hypot(position.x - destination.x, (position.y - destination.y) * 1.7);
             if (distance < closestDistance) { closest = key; closestDistance = distance; }
         });
+        const previousNear = near;
         near = closestDistance < 13 ? closest : null;
+        if (near && near !== previousNear) playInterfaceSound('notice');
         document.querySelectorAll('[data-destination]').forEach(marker => marker.classList.toggle('is-near', marker.dataset.destination === near));
         prompt.textContent = near ? `ENTER / E — ${displayName(near)}` : prompt.dataset.default || prompt.textContent;
     };
     prompt.dataset.default = prompt.textContent;
+    const movementStep = .48;
     const walk = () => {
         const activeDirection = pressedDirections.at(-1);
-        const delta = {left: [-.48, 0], right: [.48, 0], up: [0, -.48], down: [0, .48]}[activeDirection];
+        const horizontalStep = movementStep * hub.clientHeight / Math.max(1, hub.clientWidth);
+        const delta = {
+            left: [-horizontalStep, 0],
+            right: [horizontalStep, 0],
+            up: [0, -movementStep],
+            down: [0, movementStep],
+        }[activeDirection];
         if (delta) {
             direction = activeDirection;
             const next = {x: position.x + delta[0], y: position.y + delta[1]};
             if (!blocked(next.x, next.y)) position = next;
-            frame = Math.floor(Date.now() / 150) % 2 ? 1 : 2;
+            else playInterfaceSound('collision');
             update();
-        } else if (frame) { frame = 0; update(); }
+        }
         requestAnimationFrame(walk);
     };
     const ignored = () => ['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(document.activeElement?.tagName) || settingsDialog?.open;
@@ -377,12 +258,18 @@ if (hub) {
         if (!released) return;
         const index = pressedDirections.indexOf(released);
         if (index !== -1) pressedDirections.splice(index, 1);
+        update();
     });
-    window.addEventListener('blur', () => pressedDirections.splice(0));
+    window.addEventListener('blur', () => {
+        pressedDirections.splice(0);
+        update();
+    });
     document.querySelectorAll('[data-destination]').forEach(marker => marker.addEventListener('click', () => openGame(marker.dataset.destination)));
     document.querySelector('[data-game-close]').addEventListener('click', () => gameDialog.close());
     gameDialog.addEventListener('close', () => {
+        playInterfaceSound('close');
         gameFrame.src = 'about:blank';
+        embeddedMusicTheme = null;
         hub.focus();
         musicEnabled = localStorage.getItem('pokeline_music') !== 'off';
         if (musicEnabled) startMusic('menu');
@@ -397,7 +284,8 @@ if (hub) {
             stopMusic();
             return;
         }
-        if (event.data?.type === 'pokeline:music-theme' && musicThemes[event.data.theme]) {
+        if (event.data?.type === 'pokeline:music-theme' && midiMusicThemes[event.data.theme]) {
+            embeddedMusicTheme = event.data.theme;
             musicEnabled = localStorage.getItem('pokeline_music') !== 'off';
             musicUnlocked = true;
             if (musicEnabled) startMusic(event.data.theme);
@@ -419,6 +307,28 @@ if (window.self !== window.top) {
 const pokedexDialog = document.querySelector('#pokedex-dialog');
 let pokedexTarget = null;
 let pokedexMode = 'replace';
+const pokemonDetailsPage = document.querySelector('[data-pokemon-details-url]');
+const pokemonDetailsDialog = document.querySelector('#pokemon-details-dialog');
+const pokemonDetailsContent = pokemonDetailsDialog?.querySelector('[data-pokemon-details-content]');
+const pokemonDetailsText = pokemonDetailsPage ? JSON.parse(pokemonDetailsPage.dataset.pokemonDetailsTranslations) : null;
+const escapePokemonDetails = value => String(value ?? '').replace(/[&<>'"]/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[character]));
+const showPokemonDetails = async name => {
+    if (!pokemonDetailsDialog || !pokemonDetailsContent || !pokemonDetailsPage) return;
+    pokemonDetailsContent.innerHTML = '<div class="pokemon-details-loading">…</div>';
+    pokemonDetailsDialog.showModal();
+    try {
+        const response = await fetch(`${pokemonDetailsPage.dataset.pokemonDetailsUrl}/${encodeURIComponent(name)}`, {headers: {Accept: 'application/json'}});
+        if (!response.ok) throw new Error((await response.json().catch(() => ({}))).message || `HTTP ${response.status}`);
+        const pokemon = await response.json();
+        const statKeys = ['hp', 'attack', 'defense', 'special_attack', 'special_defense', 'speed'];
+        const highestStat = Math.max(1, ...statKeys.map(key => Number(pokemon.stats?.[key] || 0)));
+        const typeLabel = type => pokemonDetailsText.types?.[type] || type;
+        pokemonDetailsContent.innerHTML = `<header class="pokemon-details-head"><img src="${escapePokemonDetails(pokemon.sprites?.artwork || pokemon.sprites?.front)}" alt=""><div><small>#${String(pokemon.id).padStart(4, '0')}</small><h2 id="pokemon-details-title">${escapePokemonDetails(pokemon.label)}</h2><div class="type-tags">${pokemon.types.map(type => `<span class="type-${escapePokemonDetails(type)}">${escapePokemonDetails(typeLabel(type))}</span>`).join('')}</div></div></header><div class="pokemon-details-columns"><section><h3>${escapePokemonDetails(pokemonDetailsText.stats)}</h3><div class="pokemon-stat-list">${statKeys.map(key => { const value = Number(pokemon.stats?.[key] || 0); return `<div><span>${escapePokemonDetails(pokemonDetailsText[key])}</span><i><b style="width:${Math.round(value / highestStat * 100)}%"></b></i><strong>${value}</strong></div>`; }).join('')}</div></section><section><h3>${escapePokemonDetails(pokemonDetailsText.moves)}</h3><div class="pokemon-move-list">${pokemon.moves.map(move => `<article class="type-${escapePokemonDetails(move.type)}"><strong>${escapePokemonDetails(move.label)}</strong><span>${escapePokemonDetails(typeLabel(move.type))}</span><small>${escapePokemonDetails(pokemonDetailsText.power)} ${move.power || '—'} · ${escapePokemonDetails(pokemonDetailsText.accuracy)} ${move.accuracy}% · ${move.pp} PP</small></article>`).join('')}</div></section></div>`;
+    } catch (error) {
+        pokemonDetailsContent.innerHTML = `<div class="pokemon-details-loading">${escapePokemonDetails(error.message)}</div>`;
+    }
+};
+pokemonDetailsDialog?.querySelector('[data-pokemon-details-close]')?.addEventListener('click', () => pokemonDetailsDialog.close());
 document.querySelectorAll('.pokedex-picker-button').forEach(button => button.addEventListener('click', () => {
     pokedexTarget = document.getElementById(button.dataset.pokedexTarget);
     pokedexMode = button.dataset.pokedexMode || 'replace';
@@ -426,6 +336,7 @@ document.querySelectorAll('.pokedex-picker-button').forEach(button => button.add
 }));
 
 document.querySelectorAll('[data-pokedex-browser]').forEach(browser => {
+    const pickerBrowser = Boolean(browser.closest('#pokedex-dialog'));
     const grid = browser.querySelector('[data-pokedex-grid]');
     const search = browser.querySelector('[data-pokedex-search]');
     const submit = browser.querySelector('[data-pokedex-submit]');
@@ -468,7 +379,8 @@ document.querySelectorAll('[data-pokedex-browser]').forEach(browser => {
             grid.scrollTop = 0;
             grid.querySelectorAll('[data-pokemon]').forEach(card => card.addEventListener('click', () => {
                 card.classList.add('is-selected');
-                selectPokemon(card.dataset.pokemon);
+                if (pickerBrowser) selectPokemon(card.dataset.pokemon);
+                else showPokemonDetails(card.dataset.pokemon);
             }));
         } catch (error) {
             grid.innerHTML = `<div class="pokedex-loading">${escapeHtml(error.message)}</div>`;
@@ -485,10 +397,58 @@ document.querySelectorAll('[data-pokedex-browser]').forEach(browser => {
 });
 
 const pokemonPreviewCache = new Map();
+const partySpriteOffsetCache = new Map();
+const centerPartySprite = async image => {
+    if (!image?.src) return;
+
+    let measured = partySpriteOffsetCache.get(image.src);
+    if (!measured) {
+        measured = (async () => {
+            try {
+                await image.decode();
+                const canvas = document.createElement('canvas');
+                canvas.width = image.naturalWidth;
+                canvas.height = image.naturalHeight;
+                const context = canvas.getContext('2d', {willReadFrequently: true});
+                context.drawImage(image, 0, 0);
+                const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+                let minX = canvas.width;
+                let minY = canvas.height;
+                let maxX = -1;
+                let maxY = -1;
+
+                for (let y = 0; y < canvas.height; y++) {
+                    for (let x = 0; x < canvas.width; x++) {
+                        if (pixels[(y * canvas.width + x) * 4 + 3] < 8) continue;
+                        minX = Math.min(minX, x);
+                        minY = Math.min(minY, y);
+                        maxX = Math.max(maxX, x);
+                        maxY = Math.max(maxY, y);
+                    }
+                }
+
+                if (maxX < minX || maxY < minY) return {x: 0, y: 0};
+
+                return {
+                    x: 50 - ((minX + maxX) / 2 / canvas.width * 100),
+                    y: 50 - ((minY + maxY) / 2 / canvas.height * 100),
+                };
+            } catch {
+                return {x: 0, y: 0};
+            }
+        })();
+        partySpriteOffsetCache.set(image.src, measured);
+    }
+
+    const offset = await measured;
+    image.style.setProperty('--party-sprite-x', `${offset.x.toFixed(2)}%`);
+    image.style.setProperty('--party-sprite-y', `${offset.y.toFixed(2)}%`);
+};
 document.querySelectorAll('[data-team-input]').forEach(input => {
     const preview = document.querySelector(`[data-team-preview="${input.id}"]`);
     const itemSelects = [...document.querySelectorAll(`[data-item-select="${input.id}"]`)];
     const itemsPanel = input.closest('.player-loadout').querySelector('.arcade-items');
+    const itemGrid = itemsPanel.querySelector('.item-select-grid');
     const typeLabels = JSON.parse(input.closest('[data-type-labels]')?.dataset.typeLabels || '{}');
     const translatedType = type => typeLabels[type] || type;
     let previewTimer;
@@ -496,8 +456,7 @@ document.querySelectorAll('[data-team-input]').forEach(input => {
     const escapePreview = value => String(value ?? '').replace(/[&<>'"]/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[character]));
     const emptyMarkup = index => `<span class="party-index">${index + 1}</span><i class="party-ball" aria-hidden="true"></i><div class="party-data"><div class="party-name"><b>—</b><em>Lv.—</em></div><div class="party-hp"><strong>PV</strong><i><span style="width:0"></span></i></div><div class="party-meta"><small>— / —</small><small>—</small></div></div>`;
     const loadingMarkup = (index, name) => `<span class="party-index">${index + 1}</span><i class="party-ball" aria-hidden="true"></i><div class="party-data"><div class="party-name"><b>${escapePreview(name)}</b><em>…</em></div><div class="party-hp"><strong>PV</strong><i><span style="width:35%"></span></i></div></div>`;
-    const itemLabel = select => select?.selectedOptions[0]?.dataset.itemLabel || select?.selectedOptions[0]?.textContent.split(' — ')[0] || '—';
-    const occupiedMarkup = (entry, index) => `<button type="button" class="party-remove" data-remove-pokemon="${index}" aria-label="×">×</button><span class="party-index">${index + 1}</span><i class="party-ball" aria-hidden="true"></i><img src="${escapePreview(entry.sprites.front)}" alt=""><div class="party-data"><div class="party-name"><b>${escapePreview(entry.label)}</b><em>Lv.100</em></div><div class="party-hp"><strong>PV</strong><i><span style="width:100%"></span></i></div><div class="party-meta"><small>${entry.stats.hp} / ${entry.stats.hp}</small><small>${entry.types.map(type => escapePreview(translatedType(type))).join(' / ')}</small></div><div class="party-item" data-party-item>${escapePreview(itemLabel(itemSelects[index]))}</div></div>`;
+    const occupiedMarkup = (entry, index) => `<button type="button" class="party-remove" data-remove-pokemon="${index}" aria-label="×">×</button><span class="party-index">${index + 1}</span><i class="party-ball" aria-hidden="true"></i><img crossorigin="anonymous" src="${escapePreview(entry.sprites.front)}" alt=""><div class="party-data"><div class="party-name"><b>${escapePreview(entry.label)}</b><em>Lv.100</em></div><div class="party-hp"><strong>PV</strong><i><span style="width:100%"></span></i></div><div class="party-meta"><small>${entry.stats.hp} / ${entry.stats.hp}</small><small>${entry.types.map(type => escapePreview(translatedType(type))).join(' / ')}</small></div><div data-party-item-host></div></div>`;
     const slots = Array.from({length: 6}, (_, index) => {
         const slot = document.createElement('div');
         slot.className = 'team-preview-slot empty';
@@ -528,12 +487,27 @@ document.querySelectorAll('[data-team-input]').forEach(input => {
         input.value = selected.join(', ');
         input.dispatchEvent(new Event('change', {bubbles: true}));
     };
+    const restoreItemControl = index => {
+        const label = itemSelects[index]?.closest('label');
+        if (!label || label.parentElement === itemGrid) return;
+        label.classList.remove('party-item-control');
+        itemGrid.append(label);
+    };
     const showOccupied = (slot, entry, index, name) => {
+        restoreItemControl(index);
         slot.className = 'team-preview-slot';
         slot.dataset.name = name;
         slot.dataset.state = 'ready';
         slot.dataset.partySlot = index;
         slot.innerHTML = occupiedMarkup(entry, index);
+        const itemControl = itemSelects[index]?.closest('label');
+        const itemHost = slot.querySelector('[data-party-item-host]');
+        if (itemControl && itemHost) {
+            itemControl.hidden = false;
+            itemControl.classList.add('party-item-control');
+            itemHost.replaceWith(itemControl);
+        }
+        centerPartySprite(slot.querySelector('img'));
         slot.querySelector('[data-remove-pokemon]').addEventListener('click', () => removePokemon(index));
     };
     const syncOwnedItemLimits = () => {
@@ -545,7 +519,7 @@ document.querySelectorAll('[data-team-input]').forEach(input => {
         }));
     };
     const syncItems = (names, entries = []) => {
-        itemsPanel.hidden = names.length === 0;
+        itemsPanel.hidden = true;
         itemSelects.forEach((select, index) => {
             const label = select.closest('label');
             const visible = index < names.length;
@@ -565,6 +539,7 @@ document.querySelectorAll('[data-team-input]').forEach(input => {
             const name = names[index];
             if (!name) {
                 if (slot.dataset.state !== 'empty') {
+                    restoreItemControl(index);
                     slot.className = 'team-preview-slot empty';
                     slot.dataset.state = 'empty';
                     delete slot.dataset.name;
@@ -579,6 +554,7 @@ document.querySelectorAll('[data-team-input]').forEach(input => {
                 return;
             }
             if (slot.dataset.name !== name || slot.dataset.state !== 'loading') {
+                restoreItemControl(index);
                 slot.className = 'team-preview-slot loading';
                 slot.dataset.name = name;
                 slot.dataset.state = 'loading';
@@ -593,6 +569,7 @@ document.querySelectorAll('[data-team-input]').forEach(input => {
             if (entry) {
                 if (slot.dataset.name === names[index] && slot.dataset.state !== 'ready') showOccupied(slot, entry, index, names[index]);
             } else {
+                restoreItemControl(index);
                 slot.className = 'team-preview-slot invalid';
                 slot.dataset.state = 'invalid';
                 slot.innerHTML = `<span class="party-index">${index + 1}</span><div class="party-data"><b>${escapePreview(names[index])}</b><small>?</small></div>`;
@@ -603,8 +580,6 @@ document.querySelectorAll('[data-team-input]').forEach(input => {
     input.addEventListener('input', () => { clearTimeout(previewTimer); previewTimer = setTimeout(renderPreview, 350); });
     input.addEventListener('change', renderPreview);
     itemSelects.forEach(select => select.addEventListener('change', () => {
-        const item = preview.querySelector(`[data-party-slot="${select.dataset.slot}"] [data-party-item]`);
-        if (item) item.textContent = itemLabel(select);
         syncOwnedItemLimits();
     }));
     renderPreview();
@@ -663,6 +638,8 @@ document.querySelectorAll('[data-local-team-library]').forEach(library => {
 const battleApp = document.querySelector('#battle-app');
 
 if (battleApp) {
+    const arenaWrap = battleApp.closest('.arena-wrap');
+    const battleScreen = battleApp.querySelector('.battle-screen');
     const config = {
         kind: battleApp.dataset.kind,
         mode: battleApp.dataset.mode,
@@ -678,6 +655,7 @@ if (battleApp) {
     const els = {
         playerSprite: document.querySelector('#player-sprite'),
         opponentSprite: document.querySelector('#opponent-sprite'),
+        effects: document.querySelector('#attack-effects'),
         playerHud: document.querySelector('#player-hud'),
         opponentHud: document.querySelector('#opponent-hud'),
         moves: document.querySelector('#moves'),
@@ -705,6 +683,20 @@ if (battleApp) {
     let opponentMissingFor = 0;
     let presenceTimer = null;
 
+    const fitBattleLayout = (secondPass = false) => {
+        if (!arenaWrap || !battleScreen) return;
+        arenaWrap.style.removeProperty('width');
+        const availableWidth = Math.min(1320, arenaWrap.parentElement?.clientWidth || window.innerWidth);
+        const commandPanel = battleApp.querySelector('.command-panel');
+        const stableCommandHeight = battleApp.classList.contains('local-mode') ? 0 : 142;
+        const reservedCommandSpace = Math.max(0, stableCommandHeight - (commandPanel?.offsetHeight || 0));
+        const nonStageHeight = Math.max(0, battleApp.scrollHeight - battleScreen.offsetHeight + reservedCommandSpace);
+        const availableHeight = Math.max(220, window.innerHeight - arenaWrap.getBoundingClientRect().top - nonStageHeight - 12);
+        const fittedWidth = Math.min(availableWidth, availableHeight * (16 / 9));
+        arenaWrap.style.width = `${Math.max(Math.min(availableWidth, 360), fittedWidth)}px`;
+        if (!secondPass) requestAnimationFrame(() => fitBattleLayout(true));
+    };
+
     const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
     const request = async (url, options = {}) => {
         const {headers = {}, ...requestOptions} = options;
@@ -724,6 +716,14 @@ if (battleApp) {
         submitted: spectator ? false : Boolean(raw.submitted?.[config.you]),
         reward: spectator ? [] : (raw.rewards?.[String(config.userId)] || []),
     });
+    const eventSignature = payload => JSON.stringify(payload?.state?.last_events || []);
+    const hasUnseenBattleEvents = next => Boolean(next?.state?.last_events?.length) && (
+        !currentPayload?.state
+        || Number(next.version) !== Number(currentPayload.version)
+        || next.state.turn !== currentPayload.state.turn
+        || next.state.phase !== currentPayload.state.phase
+        || eventSignature(next) !== eventSignature(currentPayload)
+    );
     const active = (state, key) => state.players[key].roster[state.players[key].active];
     const other = key => key === 'p1' ? 'p2' : 'p1';
     const hpPercent = (current, maximum) => Math.max(0, Math.min(100, Math.round(current / Math.max(1, maximum) * 100)));
@@ -732,16 +732,25 @@ if (battleApp) {
     const hud = (pokemon, displayedHp = pokemon.current_hp) => {
         const percent = hpPercent(displayedHp, pokemon.max_hp);
         const status = pokemon.status ? `<b class="status-badge status-${escape(pokemon.status)}">${escape(pokemon.status)}</b>` : '';
-        return `<div class="hud-name"><span>${escape(pokemon.label)} ${status}</span><span>Lv.100</span></div><div class="type-tags">${pokemon.types.map(type => `<span class="type-${escape(type)}">${escape(typeLabel(type))}</span>`).join('')}${pokemon.ability ? `<span>${escape(pokemon.ability)}</span>` : ''}</div><div class="hp-line"><b>${escape(config.text.hp)}</b><div class="hp-track"><div class="hp-fill ${percent < 25 ? 'low' : ''}" style="width:${percent}%"></div></div></div><div class="hp-numbers">${displayedHp} / ${pokemon.max_hp}</div>`;
+        return `<div class="hud-name"><span>${escape(pokemon.label)} ${status}</span><span>Lv.100</span></div><div class="type-tags">${pokemon.types.map(type => `<span class="type-${escape(type)}">${escape(typeLabel(type))}</span>`).join('')}${pokemon.ability ? `<span class="ability-tag">${escape(pokemon.ability)}</span>` : ''}</div><div class="hp-line"><b>${escape(config.text.hp)}</b><div class="hp-track"><div class="hp-fill ${percent < 25 ? 'low' : ''}" style="width:${percent}%"></div></div></div><div class="hp-numbers">${displayedHp} / ${pokemon.max_hp}</div>`;
     };
     const moveMarkup = (pokemon, disabled) => pokemon.moves.map((move, index) => `<button class="move-button type-${escape(move.type)}" data-move="${index}" ${(disabled || (move.current_pp ?? move.pp ?? 1) <= 0) ? 'disabled' : ''}><span>${escape(move.label)}</span><small>${escape(typeLabel(move.type))} · ${move.power || '—'} PUI · ${move.current_pp ?? move.pp ?? '?'} PP</small></button>`).join('');
-    const switchMarkup = (state, key, disabled, forced = false) => `<div class="switch-strip ${forced ? 'forced-switch' : ''}"><strong>${escape(forced ? config.text.chooseReplacement : config.text.switch)}</strong>${state.players[key].roster.map((pokemon, index) => `<button type="button" data-switch="${index}" ${(disabled || index === state.players[key].active || pokemon.current_hp <= 0) ? 'disabled' : ''} title="${escape(pokemon.label)}"><img src="${escape(pokemon.sprites.front)}" alt=""><span>${escape(pokemon.label)}<small>${pokemon.current_hp}/${pokemon.max_hp}</small></span></button>`).join('')}</div>`;
+    const switchMarkup = (state, key, disabled, forced = false) => `<div class="switch-control ${forced ? 'is-open' : ''}"><button type="button" class="switch-toggle" data-switch-toggle aria-expanded="${forced ? 'true' : 'false'}" ${forced ? 'data-forced' : ''}>${escape(forced ? config.text.chooseReplacement : config.text.switch)}</button><div class="switch-strip ${forced ? 'forced-switch' : ''}" ${forced ? '' : 'hidden'}>${state.players[key].roster.map((pokemon, index) => `<button type="button" data-switch="${index}" ${(disabled || index === state.players[key].active || pokemon.current_hp <= 0) ? 'disabled' : ''} title="${escape(pokemon.label)}"><img src="${escape(pokemon.sprites.front)}" alt=""><span>${escape(pokemon.label)}<small>${pokemon.current_hp}/${pokemon.max_hp}</small></span></button>`).join('')}</div></div>`;
     const controlsMarkup = (state, key, disabled, forced = false) => forced
         ? switchMarkup(state, key, disabled, true)
         : moveMarkup(active(state, key), disabled) + switchMarkup(state, key, disabled);
     const bindActions = container => {
         container.querySelectorAll('[data-move]').forEach(button => button.addEventListener('click', () => act({action_type: 'move', move_index: Number(button.dataset.move)})));
         container.querySelectorAll('[data-switch]').forEach(button => button.addEventListener('click', () => act({action_type: 'switch', pokemon_index: Number(button.dataset.switch)})));
+        container.querySelectorAll('[data-switch-toggle]').forEach(button => button.addEventListener('click', () => {
+            if (button.hasAttribute('data-forced')) return;
+            const roster = button.nextElementSibling;
+            const opening = roster.hidden;
+            roster.hidden = !opening;
+            button.setAttribute('aria-expanded', String(opening));
+            button.closest('.switch-control')?.classList.toggle('is-open', opening);
+            fitBattleLayout();
+        }));
     };
     const spriteFor = (state, key, you) => {
         const pokemon = active(state, key);
@@ -832,112 +841,53 @@ if (battleApp) {
                             : config.text.choose);
         }
         if (showResult) resultScreen(state, you, data.reward);
+        requestAnimationFrame(() => fitBattleLayout());
     };
-    const animateHp = async (key, you, currentHp, maximumHp) => {
+    const animateHp = (key, you, fromHp, currentHp, maximumHp) => new Promise(resolve => {
         const targetHud = hudFor(key, you);
         const fill = targetHud.querySelector('.hp-fill');
         const numbers = targetHud.querySelector('.hp-numbers');
-        if (!fill || !numbers) return;
-        const percent = hpPercent(currentHp, maximumHp);
-        fill.classList.toggle('low', percent < 25);
-        fill.style.width = `${percent}%`;
-        numbers.textContent = `${currentHp} / ${maximumHp}`;
-        await wait(760);
-    };
-    const playSound = name => {
-        if (!soundEnabled || soundVolume <= 0) return;
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContextClass) return;
-        const context = new AudioContextClass();
-        const master = context.createGain();
-        const compressor = context.createDynamicsCompressor();
-        master.gain.value = soundVolume;
-        compressor.threshold.value = -15;
-        compressor.ratio.value = 7;
-        master.connect(compressor).connect(context.destination);
-        const now = context.currentTime;
-        let lifetime = .42;
-        const tone = (waveform, from, to, duration, gainValue, delay = 0, detune = 0) => {
-            const start = now + delay;
-            const oscillator = context.createOscillator();
-            const gain = context.createGain();
-            oscillator.type = waveform;
-            oscillator.frequency.setValueAtTime(Math.max(1, from), start);
-            oscillator.frequency.exponentialRampToValueAtTime(Math.max(1, to), start + duration);
-            oscillator.detune.setValueAtTime(detune, start);
-            gain.gain.setValueAtTime(.0001, start);
-            gain.gain.exponentialRampToValueAtTime(gainValue, start + .012);
-            gain.gain.exponentialRampToValueAtTime(.0001, start + duration);
-            oscillator.connect(gain).connect(master);
-            oscillator.start(start);
-            oscillator.stop(start + duration + .02);
-            lifetime = Math.max(lifetime, delay + duration + .08);
-        };
-        const burst = (duration, gainValue, frequency, delay = 0) => {
-            playNoise(context, master, now + delay, duration, gainValue, frequency);
-            lifetime = Math.max(lifetime, delay + duration + .08);
-        };
-        const profile = String(name || 'normal').toLowerCase();
-
-        if (profile === 'faint') {
-            lifetime = .95;
-            [0, .12, .24, .36].forEach((delay, index) => tone('square', 520 - index * 85, 230 - index * 35, .2, .1, delay));
-            tone('triangle', 180, 38, .72, .16, .08);
-            burst(.34, .055, 650, .32);
-        } else if (profile === 'critical-impact') {
-            tone('square', 155, 42, .24, .18);
-            tone('sawtooth', 330, 70, .17, .09, .015);
-            burst(.15, .11, 720);
-        } else if (profile === 'impact') {
-            tone('square', 120, 48, .18, .14);
-            burst(.11, .075, 900);
-        } else if (profile === 'heal') {
-            [0, .08, .16, .24].forEach((delay, index) => tone('square', 440 + index * 110, 660 + index * 130, .16, .055, delay));
-        } else if (profile === 'switch') {
-            tone('triangle', 150, 680, .3, .11);
-            tone('square', 300, 980, .22, .035, .08);
-        } else if (profile === 'status') {
-            tone('sine', 260, 780, .36, .08);
-            tone('square', 520, 390, .28, .035, .05, 5);
-        } else if (profile === 'fire') {
-            tone('sawtooth', 310, 95, .34, .12);
-            burst(.28, .075, 1100);
-        } else if (profile === 'water') {
-            tone('sine', 170, 760, .34, .13);
-            tone('triangle', 620, 210, .27, .07, .08);
-        } else if (profile === 'electric') {
-            [0, .055, .11, .165].forEach((delay, index) => tone('square', index % 2 ? 1250 : 720, index % 2 ? 610 : 1500, .07, .075, delay));
-            burst(.2, .035, 4200);
-        } else if (profile === 'grass' || profile === 'bug') {
-            tone('triangle', 360, 920, .3, .09);
-            tone('square', 740, 430, .2, .04, .07);
-        } else if (profile === 'ice') {
-            [0, .07, .14].forEach((delay, index) => tone('sine', 760 + index * 180, 1120 + index * 220, .18, .055, delay));
-            burst(.18, .025, 6000);
-        } else if (profile === 'psychic' || profile === 'fairy') {
-            tone('sine', 280, 1120, .38, .1);
-            tone('sine', 880, 330, .38, .065, 0, 11);
-        } else if (profile === 'ghost' || profile === 'dark') {
-            tone('sawtooth', 210, 55, .42, .095);
-            tone('sine', 480, 125, .36, .055, .04, -16);
-        } else if (profile === 'poison') {
-            tone('sawtooth', 190, 340, .36, .09);
-            tone('square', 115, 80, .32, .055, .06);
-        } else if (profile === 'flying') {
-            tone('triangle', 240, 1050, .27, .1);
-            burst(.18, .035, 3600, .05);
-        } else if (profile === 'dragon') {
-            tone('sawtooth', 145, 720, .38, .13);
-            tone('square', 310, 95, .3, .065, .08);
-        } else if (['rock', 'ground', 'steel', 'fighting'].includes(profile)) {
-            tone('square', profile === 'steel' ? 390 : 145, 48, .28, .145);
-            burst(.18, .09, profile === 'steel' ? 2600 : 650);
-        } else {
-            tone('square', 260, 105, .26, .11);
-            tone('triangle', 390, 170, .2, .05, .04);
+        if (!fill || !numbers) {
+            resolve();
+            return;
         }
-
-        window.setTimeout(() => context.close().catch(() => {}), lifetime * 1000);
+        const difference = currentHp - fromHp;
+        const changedRatio = Math.abs(difference) / Math.max(1, maximumHp);
+        const duration = Math.min(1350, Math.max(340, 300 + changedRatio * 1050));
+        const startedAt = performance.now();
+        fill.style.transition = 'none';
+        const tick = now => {
+            const progress = Math.min(1, (now - startedAt) / duration);
+            const eased = 1 - ((1 - progress) ** 2);
+            const displayedHp = Math.round(fromHp + difference * eased);
+            const percent = hpPercent(displayedHp, maximumHp);
+            fill.classList.toggle('low', percent < 25);
+            fill.style.width = `${percent}%`;
+            numbers.textContent = `${displayedHp} / ${maximumHp}`;
+            if (progress < 1) {
+                requestAnimationFrame(tick);
+                return;
+            }
+            fill.style.removeProperty('transition');
+            resolve();
+        };
+        requestAnimationFrame(tick);
+    });
+    const playSound = name => {
+        if (soundEnabled) playGameSound(name, soundVolume);
+    };
+    const attackTypes = new Set(['normal', 'fire', 'water', 'electric', 'grass', 'ice', 'fighting', 'poison', 'ground', 'flying', 'psychic', 'bug', 'rock', 'ghost', 'dragon', 'dark', 'steel', 'fairy']);
+    const playAttackEffect = (type, damageClass, actor, you) => {
+        if (!els.effects) return Promise.resolve();
+        const effectType = attackTypes.has(type) ? type : 'normal';
+        const effectClass = ['physical', 'special', 'status'].includes(damageClass) ? damageClass : 'physical';
+        const effect = document.createElement('div');
+        effect.className = `attack-effect type-${effectType} class-${effectClass} ${actor === you ? 'from-player' : 'from-opponent'}`;
+        effect.innerHTML = '<i></i><i></i><i></i><i></i><i></i><i></i>';
+        els.effects.replaceChildren(effect);
+        return wait(760).then(() => {
+            if (effect.parentNode) effect.remove();
+        });
     };
     const playSequence = async (events, previousState, finalState, you) => {
         const visualHp = {
@@ -948,17 +898,24 @@ if (battleApp) {
             p1: active(previousState, 'p1').max_hp,
             p2: active(previousState, 'p2').max_hp,
         };
+        let criticalHit = false;
 
         for (const event of events) {
             showMessage(event.text || '');
             if (event.type === 'attack') {
-                await wait(420);
+                await wait(260);
                 const attacker = spriteElementFor(event.actor, you);
                 attacker.classList.remove('lunge-right', 'lunge-left');
                 void attacker.offsetWidth;
                 attacker.classList.add(event.actor === you ? 'lunge-right' : 'lunge-left');
-                playSound(event.damage_class === 'status' ? 'status' : (event.move_type || event.move));
-                await wait(520);
+                playSound(`attack-${event.move_type || 'normal'}-${event.damage_class || 'physical'}`);
+                await Promise.all([wait(700), playAttackEffect(event.move_type || 'normal', event.damage_class || 'physical', event.actor, you)]);
+                attacker.classList.remove('lunge-right', 'lunge-left');
+                continue;
+            }
+            if (event.type === 'critical') {
+                criticalHit = true;
+                await wait(300);
                 continue;
             }
             if (['damage', 'recoil', 'status-damage', 'weather-damage'].includes(event.type)) {
@@ -966,16 +923,48 @@ if (battleApp) {
                 target.classList.remove('hit-shake');
                 void target.offsetWidth;
                 target.classList.add('hit-shake');
-                playSound(Number(event.effectiveness || 1) > 1 ? 'critical-impact' : 'impact');
-                await wait(180);
-                visualHp[event.target] = Math.max(0, visualHp[event.target] - Number(event.amount || 0));
-                await animateHp(event.target, you, visualHp[event.target], maximumHp[event.target]);
+                const effectiveness = Number(event.effectiveness ?? 1);
+                const impactSound = criticalHit
+                    ? 'critical-impact'
+                    : effectiveness > 1
+                        ? 'super-effective-impact'
+                        : effectiveness < 1
+                            ? 'resisted-impact'
+                            : 'impact';
+                playSound(impactSound);
+                await wait(500);
+                target.classList.remove('hit-shake');
+                const previousHp = visualHp[event.target];
+                const nextHp = Math.max(0, previousHp - Number(event.amount || 0));
+                await animateHp(event.target, you, previousHp, nextHp, maximumHp[event.target]);
+                visualHp[event.target] = nextHp;
+                criticalHit = false;
                 continue;
             }
             if (event.type === 'heal') {
                 playSound('heal');
-                visualHp[event.target] = Math.min(maximumHp[event.target], visualHp[event.target] + Number(event.amount || 0));
-                await animateHp(event.target, you, visualHp[event.target], maximumHp[event.target]);
+                const previousHp = visualHp[event.target];
+                const nextHp = Math.min(maximumHp[event.target], previousHp + Number(event.amount || 0));
+                await animateHp(event.target, you, previousHp, nextHp, maximumHp[event.target]);
+                visualHp[event.target] = nextHp;
+                continue;
+            }
+            if (event.type === 'immune') {
+                playSound('immune');
+                criticalHit = false;
+                await wait(600);
+                continue;
+            }
+            if (event.type === 'miss') {
+                playSound('miss');
+                criticalHit = false;
+                await wait(520);
+                continue;
+            }
+            if (event.type === 'protect') {
+                playSound('protect');
+                criticalHit = false;
+                await wait(520);
                 continue;
             }
             if (event.type === 'faint') {
@@ -1010,6 +999,7 @@ if (battleApp) {
             currentPayload = next;
             return;
         }
+        if (animating && Number(next.version) === Number(currentPayload?.version)) return;
         document.querySelector('.waiting-card')?.remove();
         battleApp.classList.remove('is-waiting');
         const previous = currentPayload;
@@ -1020,10 +1010,12 @@ if (battleApp) {
             animating = true;
             draw(previous, {disabled: true, preserveMessage: true, showResult: false});
             await playSequence(next.state.last_events, previous.state, next.state, next.you || 'p1');
+            const finalKnockout = next.state.phase === 'finished' && next.state.last_events.some(event => event.type === 'faint');
+            if (finalKnockout) await wait(1200);
             animating = false;
             draw(next, {showResult: false});
             if (next.state.phase === 'finished') {
-                await wait(450);
+                await wait(finalKnockout ? 650 : 450);
                 resultScreen(next.state, next.you || 'p1', next.reward);
             }
         } else {
@@ -1041,6 +1033,7 @@ if (battleApp) {
                 body: JSON.stringify(action),
             });
             const nextNormalized = normalized(next);
+            const hasBattleEvents = hasUnseenBattleEvents(nextNormalized);
             if (config.kind === 'online' && window.Echo?.connector?.pusher?.connection?.state === 'connected') {
                 busy = false;
 
@@ -1049,7 +1042,7 @@ if (battleApp) {
                     && Boolean(currentPayload?.submitted) === Boolean(nextNormalized.submitted)
                     && currentPayload?.status === nextNormalized.status;
                 if (!realtimeMatchesResponse) {
-                    const shouldAnimate = renderedVersion === null || nextNormalized.version !== renderedVersion;
+                    const shouldAnimate = hasBattleEvents || renderedVersion === null || nextNormalized.version !== renderedVersion;
                     renderedVersion = nextNormalized.version;
                     await render(next, shouldAnimate);
                 } else if (!animating && currentPayload) {
@@ -1058,7 +1051,7 @@ if (battleApp) {
 
                 return;
             }
-            const shouldAnimate = action.action_type === 'switch' || renderedVersion === null || nextNormalized.version !== renderedVersion || config.mode === 'local';
+            const shouldAnimate = hasBattleEvents || action.action_type === 'switch' || renderedVersion === null || nextNormalized.version !== renderedVersion || config.mode === 'local';
             busy = false;
             await render(next, shouldAnimate);
             renderedVersion = nextNormalized.version;
@@ -1073,8 +1066,9 @@ if (battleApp) {
         refreshing = true;
         try {
             const next = await request(config.stateUrl);
-            const version = normalized(next).version;
-            const shouldAnimate = renderedVersion !== null && version !== renderedVersion;
+            const nextNormalized = normalized(next);
+            const version = nextNormalized.version;
+            const shouldAnimate = renderedVersion !== null && (hasUnseenBattleEvents(nextNormalized) || version !== renderedVersion);
             await render(next, shouldAnimate);
             renderedVersion = version;
         } catch (error) {
@@ -1088,7 +1082,7 @@ if (battleApp) {
             const next = personalized(payload);
             const version = Number(next.version);
             if (renderedVersion !== null && version < Number(renderedVersion)) return;
-            const shouldAnimate = renderedVersion !== null && version !== Number(renderedVersion);
+            const shouldAnimate = renderedVersion !== null && (hasUnseenBattleEvents(next) || version !== Number(renderedVersion));
             renderedVersion = version;
             await render(next, shouldAnimate);
         }).catch(error => {
@@ -1204,6 +1198,7 @@ if (battleApp) {
     els.soundVolume.addEventListener('input', () => updateSoundVolume(Number(els.soundVolume.value) / 100));
     els.sound.textContent = `${soundEnabled ? '🔊' : '🔇'} ${config.text.sound}`;
     els.music.textContent = `${musicEnabled ? '🎵' : '🚫'} ${config.text.music}`;
+    window.addEventListener('resize', () => fitBattleLayout());
     refresh();
     if (config.kind === 'online' || config.kind === 'spectator') connectRealtime();
     if (config.kind === 'online') {
